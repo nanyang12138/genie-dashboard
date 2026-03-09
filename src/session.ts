@@ -324,6 +324,7 @@ export class Session extends EventEmitter {
 
   // OpenCode configuration (only for mode === 'opencode')
   private _openCodeConfig: OpenCodeConfig | undefined;
+  private _resumeSessionId: string | undefined;
 
   // Session color for visual differentiation
   private _color: import('./types.js').SessionColor = 'default';
@@ -382,6 +383,8 @@ export class Session extends EventEmitter {
       allowedTools?: string;
       /** OpenCode configuration (only for mode === 'opencode') */
       openCodeConfig?: OpenCodeConfig;
+      /** Resume a previous Claude conversation (used after server reboot) */
+      resumeSessionId?: string;
     }
   ) {
     super();
@@ -398,12 +401,10 @@ export class Session extends EventEmitter {
     this.createdAt = config.createdAt || Date.now();
     this.mode = config.mode || 'claude';
     this._name = config.name || '';
+    this._resumeSessionId = config.resumeSessionId;
     this._lastActivityAt = this.createdAt;
-    // Set claudeSessionId immediately — Codeman always passes --session-id ${this.id}
-    // to Claude CLI, so the Claude session ID always matches the Codeman session ID.
-    // This ensures subagent matching works even for recovered sessions (where
-    // startInteractive() hasn't been called yet).
-    this._claudeSessionId = this.id;
+    // Set claudeSessionId — when resuming, the Claude conversation ID is the resumed one.
+    this._claudeSessionId = config.resumeSessionId || this.id;
     this._mux = config.mux || null;
     this._useMux = config.useMux ?? (this._mux !== null && this._mux.isAvailable());
     this._muxSession = config.muxSession || null;
@@ -792,6 +793,7 @@ export class Session extends EventEmitter {
       cliAccountType: this._cliAccountType || undefined,
       cliLatestVersion: this._cliLatestVersion || undefined,
       openCodeConfig: this._openCodeConfig,
+      resumeSessionId: this._resumeSessionId,
     };
   }
 
@@ -936,6 +938,7 @@ export class Session extends EventEmitter {
             claudeMode: this._claudeMode,
             allowedTools: this._allowedTools,
             openCodeConfig: this._openCodeConfig,
+            resumeSessionId: this._resumeSessionId,
           });
           console.log('[Session] Created mux session:', this._muxSession.muxName);
           // No extra sleep — createSession() already waits for tmux readiness

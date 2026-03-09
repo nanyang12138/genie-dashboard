@@ -143,6 +143,8 @@ export interface SessionState {
   cliLatestVersion?: string;
   /** OpenCode-specific configuration (only for mode === 'opencode') */
   openCodeConfig?: OpenCodeConfig;
+  /** Claude conversation session ID to resume after reboot (set by restore script) */
+  resumeSessionId?: string;
 }
 
 /**

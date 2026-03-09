@@ -61,6 +61,8 @@ export interface CreateSessionOptions {
   claudeMode?: ClaudeMode;
   allowedTools?: string;
   openCodeConfig?: OpenCodeConfig;
+  /** When restoring after reboot, resume a previous Claude conversation by its session ID */
+  resumeSessionId?: string;
 }
 
 /** Options for respawning a dead pane. */

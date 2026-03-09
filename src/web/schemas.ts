@@ -125,6 +125,12 @@ export const CreateSessionSchema = z.object({
   name: z.string().max(100).optional(),
   envOverrides: safeEnvOverridesSchema,
   openCodeConfig: OpenCodeConfigSchema,
+  /** Resume a previous Claude conversation by its session ID (used for reboot recovery) */
+  resumeSessionId: z
+    .string()
+    .max(100)
+    .regex(/^[a-f0-9-]+$/, 'resumeSessionId must be a valid UUID')
+    .optional(),
 });
 
 /**

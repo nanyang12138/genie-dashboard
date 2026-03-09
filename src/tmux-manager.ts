@@ -200,12 +200,17 @@ function buildSpawnCommand(options: {
   claudeMode?: ClaudeMode;
   allowedTools?: string;
   openCodeConfig?: OpenCodeConfig;
+  resumeSessionId?: string;
 }): string {
   if (options.mode === 'claude') {
     // Validate model to prevent command injection
     const safeModel = options.model && /^[a-zA-Z0-9._-]+$/.test(options.model) ? options.model : undefined;
     const modelFlag = safeModel ? ` --model ${safeModel}` : '';
-    return `claude${buildClaudePermissionFlags(options.claudeMode, options.allowedTools)} --session-id "${options.sessionId}"${modelFlag}`;
+    // Use --resume to restore a previous conversation, otherwise --session-id for new sessions
+    const safeResumeId =
+      options.resumeSessionId && /^[a-f0-9-]+$/.test(options.resumeSessionId) ? options.resumeSessionId : undefined;
+    const sessionFlag = safeResumeId ? ` --resume "${safeResumeId}"` : ` --session-id "${options.sessionId}"`;
+    return `claude${buildClaudePermissionFlags(options.claudeMode, options.allowedTools)}${sessionFlag}${modelFlag}`;
   }
   if (options.mode === 'opencode') {
     return buildOpenCodeCommand(options.openCodeConfig);
@@ -370,7 +375,18 @@ export class TmuxManager extends EventEmitter implements TerminalMultiplexer {
    * In test mode: creates an in-memory session only (no real tmux session).
    */
   async createSession(options: CreateSessionOptions): Promise<MuxSession> {
-    const { sessionId, workingDir, mode, name, niceConfig, model, claudeMode, allowedTools, openCodeConfig } = options;
+    const {
+      sessionId,
+      workingDir,
+      mode,
+      name,
+      niceConfig,
+      model,
+      claudeMode,
+      allowedTools,
+      openCodeConfig,
+      resumeSessionId,
+    } = options;
     const muxName = `codeman-${sessionId.slice(0, 8)}`;
 
     if (!isValidMuxName(muxName)) {
@@ -433,6 +449,7 @@ export class TmuxManager extends EventEmitter implements TerminalMultiplexer {
       claudeMode,
       allowedTools,
       openCodeConfig,
+      resumeSessionId,
     });
 
     const config = niceConfig || DEFAULT_NICE_CONFIG;
