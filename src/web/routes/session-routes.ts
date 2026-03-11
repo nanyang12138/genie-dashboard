@@ -144,6 +144,7 @@ export function registerSessionRoutes(
       claudeMode: claudeModeConfig.claudeMode,
       allowedTools: claudeModeConfig.allowedTools,
       openCodeConfig: mode === 'opencode' ? body.openCodeConfig : undefined,
+      resumeSessionId: body.resumeSessionId,
     });
 
     ctx.addSession(session);
@@ -916,5 +917,92 @@ export function registerSessionRoutes(
       await ctx.cleanupSession(session.id, true, 'quick_start_error');
       return createErrorResponse(ApiErrorCode.OPERATION_FAILED, getErrorMessage(err));
     }
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // History — list past Claude conversations for resume
+  // ═══════════════════════════════════════════════════════════════
+
+  app.get('/api/history/sessions', async () => {
+    const projectsDir = join(process.env.HOME || '/tmp', '.claude', 'projects');
+    const results: Array<{
+      sessionId: string;
+      workingDir: string;
+      projectKey: string;
+      sizeBytes: number;
+      lastModified: string;
+    }> = [];
+
+    try {
+      const projectDirs = await fs.readdir(projectsDir);
+      for (const projDir of projectDirs) {
+        const projPath = join(projectsDir, projDir);
+        const stat = await fs.stat(projPath).catch(() => null);
+        if (!stat?.isDirectory()) continue;
+
+        // Decode project key to working dir. The encoding replaces '/' with '-',
+        // which is lossy when path components contain '-'. Do naive decode first,
+        // then verify it exists. Fall back to HOME if the decoded path is invalid.
+        const naiveDecode = projDir.replace(/^-/, '/').replace(/-/g, '/');
+        const dirExists = await fs
+          .access(naiveDecode)
+          .then(() => true)
+          .catch(() => false);
+        const workingDir = dirExists ? naiveDecode : process.env.HOME || '/tmp';
+
+        const entries = await fs.readdir(projPath);
+        for (const entry of entries) {
+          if (!entry.endsWith('.jsonl')) continue;
+          const sessionId = entry.replace('.jsonl', '');
+          // Only valid UUIDs
+          if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(sessionId)) continue;
+
+          const filePath = join(projPath, entry);
+          const fileStat = await fs.stat(filePath).catch(() => null);
+          if (!fileStat) continue;
+          // Skip files too small to contain real conversation (metadata-only sessions
+          // like file-history-snapshot entries are typically < 4KB)
+          if (fileStat.size < 4000) continue;
+
+          // Quick content check: verify actual conversation data exists.
+          // Sessions with only file-history-snapshot or hook_progress entries have
+          // no "user"/"assistant" messages and will fail claude --resume.
+          // Files > 50KB are almost certainly real conversations (skip the read).
+          if (fileStat.size < 50000) {
+            try {
+              const fd = await fs.open(filePath, 'r');
+              const buf = Buffer.alloc(16384);
+              const { bytesRead } = await fd.read(buf, 0, 16384, 0);
+              await fd.close();
+              const head = buf.toString('utf8', 0, bytesRead);
+              if (
+                !head.includes('"type":"user"') &&
+                !head.includes('"type":"assistant"') &&
+                !head.includes('"type":"summary"')
+              ) {
+                continue; // No conversation content — skip
+              }
+            } catch {
+              continue;
+            }
+          }
+
+          results.push({
+            sessionId,
+            workingDir,
+            projectKey: projDir,
+            sizeBytes: fileStat.size,
+            lastModified: fileStat.mtime.toISOString(),
+          });
+        }
+      }
+    } catch {
+      // Projects dir may not exist
+    }
+
+    // Sort by lastModified descending
+    results.sort((a, b) => new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime());
+
+    return { sessions: results.slice(0, 50) };
   });
 }

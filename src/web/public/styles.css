@@ -270,6 +270,8 @@ body {
   will-change: opacity;
 }
 .session-tab .tab-status.error { background: var(--red); }
+.session-tab .tab-status.ended { background: var(--text-muted); opacity: 0.5; }
+.session-tab[data-ended] { opacity: 0.55; }
 
 /* Session color coding - left border indicator */
 .session-tab[data-color="red"] { border-left: 3px solid var(--session-red); }
@@ -2084,6 +2086,70 @@ body {
   text-align: center;
 }
 
+/* History sessions panel (welcome overlay) */
+.history-sessions {
+  margin-top: 1.5rem;
+  width: 100%;
+  max-width: 560px;
+}
+
+.history-title {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  text-align: left;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  text-align: left;
+}
+
+.history-item:hover {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
+.history-item-dir {
+  flex: 1;
+  font-size: 0.8rem;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-item-meta {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.history-item-size {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+  min-width: 45px;
+  text-align: right;
+}
+
 .welcome-hint {
   color: var(--text-muted);
   font-size: 0.8rem;
@@ -2264,7 +2330,8 @@ body {
   border-radius: 6px;
   padding: 4px;
   z-index: 1000;
-  min-width: 150px;
+  min-width: 180px;
+  max-width: 300px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.4);
 }
 .run-mode-menu.active {
@@ -2300,6 +2367,40 @@ body {
 }
 .run-mode-dot.claude { background: #3b82f6; }
 .run-mode-dot.opencode { background: #10b981; }
+
+.run-mode-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+.run-mode-header {
+  padding: 4px 10px 2px;
+  font-size: 0.72em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+.run-mode-history {
+  max-height: 200px;
+  overflow-y: auto;
+}
+.run-mode-option .hist-dir {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.run-mode-option .hist-meta {
+  font-size: 0.85em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.run-mode-hist-empty {
+  padding: 6px 10px;
+  color: var(--text-muted);
+  font-style: italic;
+}
 
 /* Shell Button - Special styling */
 .btn-toolbar.btn-shell {

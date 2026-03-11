@@ -256,6 +256,10 @@
             <div class="welcome-qr-inner" id="welcomeQrInner"></div>
             <div class="welcome-qr-url" id="welcomeQrUrl"></div>
           </div>
+          <div class="history-sessions" id="historySessions" style="display:none">
+            <h3 class="history-title">Resume Conversation</h3>
+            <div class="history-list" id="historyList"></div>
+          </div>
           <p class="welcome-hint">Or press <kbd>Ctrl</kbd>+<kbd>Enter</kbd> to start</p>
           <button class="welcome-ralph-link" onclick="app.showRalphWizard()">Start Ralph Loop &rarr;</button>
         </div>
@@ -326,6 +330,9 @@
               <button class="run-mode-option" data-mode="opencode" onclick="app.setRunMode('opencode')">
                 <span class="run-mode-dot opencode"></span>OpenCode
               </button>
+              <div class="run-mode-sep"></div>
+              <div class="run-mode-header">Recent Sessions</div>
+              <div class="run-mode-history" id="runModeHistory"></div>
             </div>
           </div>
           <div class="tab-count-group" title="Instance count">

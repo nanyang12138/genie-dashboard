@@ -600,7 +600,7 @@ class CodemanApp {
       },
       fontFamily: '"Fira Code", "Cascadia Code", "JetBrains Mono", "SF Mono", Monaco, monospace',
       // Use smaller font on mobile to fit more columns (prevents wrapping of Claude's status line)
-      fontSize: MobileDetection.getDeviceType() === 'mobile' ? 10 : 14,
+      fontSize: MobileDetection.getDeviceType() === 'mobile' ? 10 : 12,
       lineHeight: 1.2,
       cursorBlink: false,
       cursorStyle: 'block',
@@ -758,40 +758,73 @@ class CodemanApp {
     const MIN_ROWS = 10;
 
     const throttledResize = () => {
-      if (this._resizeTimeout) return;
+      // Trailing-edge debounce: ALL resize work (fit + clear + SIGWINCH) happens
+      // once after the user stops resizing. During active resize, the terminal
+      // stays at its old dimensions for up to 300ms.
+      //
+      // Why not fit() immediately? Each fitAddon.fit() reflows content at the
+      // new width — lines that were 7 rows become 10, and the overflow gets
+      // pushed into scrollback. With continuous resize events, this creates
+      // dozens of intermediate reflow states in scrollback, appearing as
+      // duplicate/garbled content when the user scrolls up.
+      //
+      // By deferring fit() to the trailing edge, there's exactly ONE reflow
+      // at the final dimensions, ONE viewport clear, and ONE Ink redraw.
+      if (this._resizeTimeout) {
+        clearTimeout(this._resizeTimeout);
+      }
       this._resizeTimeout = setTimeout(() => {
         this._resizeTimeout = null;
+        // Fit xterm.js to final container dimensions
         if (this.fitAddon) {
           this.fitAddon.fit();
-          // Skip server resize while mobile keyboard is visible — sending SIGWINCH
-          // causes Ink to re-render at the new row count, garbling terminal output.
-          // Local fit() still runs so xterm knows the viewport size for scrolling.
-          const keyboardUp = typeof KeyboardHandler !== 'undefined' && KeyboardHandler.keyboardVisible;
-          if (this.activeSessionId && !keyboardUp) {
-            const dims = this.fitAddon.proposeDimensions();
-            // Enforce minimum dimensions to prevent layout issues
-            const cols = dims ? Math.max(dims.cols, MIN_COLS) : MIN_COLS;
-            const rows = dims ? Math.max(dims.rows, MIN_ROWS) : MIN_ROWS;
-            // Only send resize if dimensions actually changed
-            if (!this._lastResizeDims ||
-                cols !== this._lastResizeDims.cols ||
-                rows !== this._lastResizeDims.rows) {
-              this._lastResizeDims = { cols, rows };
-              fetch(`/api/sessions/${this.activeSessionId}/resize`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cols, rows })
-              }).catch(() => {});
-            }
+        }
+        // Flush any stale flicker buffer before clearing viewport
+        if (this.flickerFilterBuffer) {
+          if (this.flickerFilterTimeout) {
+            clearTimeout(this.flickerFilterTimeout);
+            this.flickerFilterTimeout = null;
+          }
+          this.flushFlickerBuffer();
+        }
+        // Clear viewport + scrollback for Ink-based sessions before sending SIGWINCH.
+        // fitAddon.fit() reflows content: lines at old width may wrap to more rows,
+        // pushing overflow into scrollback. Ink's cursor-up count is based on the
+        // pre-reflow line count, so ghost renders accumulate in scrollback.
+        // Fix: \x1b[3J (Erase Saved Lines) clears scrollback reflow debris,
+        // then \x1b[H\x1b[2J clears the viewport for a clean Ink redraw.
+        const activeResizeSession = this.activeSessionId ? this.sessions.get(this.activeSessionId) : null;
+        if (activeResizeSession && activeResizeSession.mode !== 'shell' && !activeResizeSession._ended
+            && this.terminal && this.isTerminalAtBottom()) {
+          this.terminal.write('\x1b[3J\x1b[H\x1b[2J');
+        }
+        // Skip server resize while mobile keyboard is visible — sending SIGWINCH
+        // causes Ink to re-render at the new row count, garbling terminal output.
+        // Local fit() still runs so xterm knows the viewport size for scrolling.
+        const keyboardUp = typeof KeyboardHandler !== 'undefined' && KeyboardHandler.keyboardVisible;
+        if (this.activeSessionId && !keyboardUp) {
+          const dims = this.fitAddon.proposeDimensions();
+          // Enforce minimum dimensions to prevent layout issues
+          const cols = dims ? Math.max(dims.cols, MIN_COLS) : MIN_COLS;
+          const rows = dims ? Math.max(dims.rows, MIN_ROWS) : MIN_ROWS;
+          // Only send resize if dimensions actually changed
+          if (!this._lastResizeDims ||
+              cols !== this._lastResizeDims.cols ||
+              rows !== this._lastResizeDims.rows) {
+            this._lastResizeDims = { cols, rows };
+            fetch(`/api/sessions/${this.activeSessionId}/resize`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ cols, rows })
+            }).catch(() => {});
           }
         }
-        // Update subagent connection lines when viewport resizes
+        // Update subagent connection lines and local echo at new dimensions
         this.updateConnectionLines();
-        // Re-render local echo overlay at new cell dimensions/positions
         if (this._localEchoOverlay?.hasPending) {
           this._localEchoOverlay.rerender();
         }
-      }, 100); // Throttle to 100ms
+      }, 300); // Trailing-edge: only fire after 300ms of no resize events
     };
 
     window.addEventListener('resize', throttledResize);
@@ -1131,6 +1164,7 @@ class CodemanApp {
     if (overlay) {
       overlay.classList.add('visible');
       this.loadTunnelStatus();
+      this.loadHistorySessions();
     }
   }
 
@@ -1144,6 +1178,115 @@ class CodemanApp {
     if (qrWrap) {
       clearTimeout(this._welcomeQrShrinkTimer);
       qrWrap.classList.remove('expanded');
+    }
+  }
+
+  async loadHistorySessions() {
+    const container = document.getElementById('historySessions');
+    const list = document.getElementById('historyList');
+    if (!container || !list) return;
+
+    try {
+      const res = await fetch('/api/history/sessions');
+      const data = await res.json();
+      const sessions = data.sessions || [];
+      if (sessions.length === 0) {
+        container.style.display = 'none';
+        return;
+      }
+
+      // Deduplicate: keep only the most recent session per workingDir
+      const byDir = new Map();
+      for (const s of sessions) {
+        if (!byDir.has(s.workingDir)) byDir.set(s.workingDir, []);
+        byDir.get(s.workingDir).push(s);
+      }
+
+      // Flatten: show up to 2 most recent per dir, max 12 total
+      const items = [];
+      for (const [, group] of byDir) {
+        items.push(...group.slice(0, 2));
+      }
+      items.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
+      const display = items.slice(0, 12);
+
+      // Build DOM safely (no innerHTML with user data)
+      list.replaceChildren();
+      for (const s of display) {
+        const size = s.sizeBytes < 1024 ? `${s.sizeBytes}B`
+          : s.sizeBytes < 1048576 ? `${(s.sizeBytes / 1024).toFixed(0)}K`
+          : `${(s.sizeBytes / 1048576).toFixed(1)}M`;
+        const date = new Date(s.lastModified);
+        const timeStr = date.toLocaleDateString('en', { month: 'short', day: 'numeric' })
+          + ' ' + date.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', hour12: false });
+        const shortDir = s.workingDir.replace(/^\/home\/[^/]+\//, '~/');
+
+        const item = document.createElement('div');
+        item.className = 'history-item';
+        item.title = s.workingDir;
+        item.addEventListener('click', () => this.resumeHistorySession(s.sessionId, s.workingDir));
+
+        const dirSpan = document.createElement('span');
+        dirSpan.className = 'history-item-dir';
+        dirSpan.textContent = shortDir;
+
+        const metaSpan = document.createElement('span');
+        metaSpan.className = 'history-item-meta';
+        metaSpan.textContent = timeStr;
+
+        const sizeSpan = document.createElement('span');
+        sizeSpan.className = 'history-item-size';
+        sizeSpan.textContent = size;
+
+        item.append(dirSpan, metaSpan, sizeSpan);
+        list.appendChild(item);
+      }
+
+      container.style.display = '';
+    } catch (err) {
+      console.error('[loadHistorySessions]', err);
+      container.style.display = 'none';
+    }
+  }
+
+  async resumeHistorySession(sessionId, workingDir) {
+    // Close the run mode menu if open
+    document.getElementById('runModeMenu')?.classList.remove('active');
+    try {
+      this.terminal.clear();
+      this.terminal.writeln(`\x1b[1;32m Resuming conversation ${sessionId.slice(0, 8)}...\x1b[0m`);
+
+      // Generate a session name from the working dir
+      const dirName = workingDir.split('/').pop() || 'session';
+      let startNumber = 1;
+      for (const [, session] of this.sessions) {
+        const match = session.name && session.name.match(/^w(\d+)-/);
+        if (match) {
+          const num = parseInt(match[1]);
+          if (num >= startNumber) startNumber = num + 1;
+        }
+      }
+      const name = `w${startNumber}-${dirName}`;
+
+      // Create session with resumeSessionId
+      const createRes = await fetch('/api/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workingDir, name, resumeSessionId: sessionId })
+      });
+      const createData = await createRes.json();
+      if (!createData.success) throw new Error(createData.error);
+
+      const newSessionId = createData.session.id;
+
+      // Start interactive
+      await fetch(`/api/sessions/${newSessionId}/interactive`, { method: 'POST' });
+
+      this.terminal.writeln(`\x1b[90m Session ${name} ready\x1b[0m`);
+      await this.selectSession(newSessionId);
+      this.terminal.focus();
+    } catch (err) {
+      this.terminal.writeln(`\x1b[1;31m Error: ${err.message}\x1b[0m`);
     }
   }
 
@@ -1183,56 +1326,13 @@ class CodemanApp {
     const session = this.activeSessionId ? this.sessions.get(this.activeSessionId) : null;
     const flickerFilterEnabled = session?.flickerFilterEnabled ?? false;
 
-    // Always buffer Ink's cursor-up redraws regardless of flicker filter setting.
-    // Ink's status bar updates use cursor-up + erase-line + rewrite, which can split
-    // across render frames causing old/new status text to overlap (garbled output).
-    // Buffering for 50ms ensures the full redraw arrives atomically.
-    //
-    // Shell mode is excluded: shell readline also uses cursor-up for prompt redraws
-    // (e.g. zsh syntax highlighting on every keystroke), and there's no Ink status bar
-    // to protect. Applying the filter in shell mode delays character feedback until the
-    // user stops typing for 50ms, making the terminal feel unresponsive.
-    const isShellMode = session?.mode === 'shell';
-    const hasCursorUpRedraw = !isShellMode && /\x1b\[\d{1,2}A/.test(data);
-    if (hasCursorUpRedraw || (this.flickerFilterActive && !flickerFilterEnabled)) {
-      this.flickerFilterActive = true;
-      this.flickerFilterBuffer += data;
+    // xterm.js 6.0 handles DEC 2026 synchronized output natively — Ink's cursor-up
+    // redraws are wrapped in 2026h/2026l markers and rendered atomically by xterm.js.
+    // No client-side cursor-up detection/buffering needed. The old 50ms flicker filter
+    // was actively harmful: it accumulated multiple resize redraws and flushed them
+    // together, causing stacked ghost renders due to reflow line-count mismatches.
 
-      // Only reset the 50ms timer on cursor-up events (start of a new Ink redraw cycle).
-      // Non-cursor-up events while the filter is active are trailing data from the same
-      // redraw — don't extend the deadline further. Without this guard, a busy Claude
-      // session emitting terminal data faster than SYNC_WAIT_TIMEOUT_MS never flushes,
-      // accumulating MBs in flickerFilterBuffer that freeze Chrome all at once.
-      if (hasCursorUpRedraw) {
-        if (this.flickerFilterTimeout) {
-          clearTimeout(this.flickerFilterTimeout);
-        }
-        this.flickerFilterTimeout = setTimeout(() => {
-          this.flickerFilterTimeout = null;
-          this.flushFlickerBuffer();
-        }, SYNC_WAIT_TIMEOUT_MS); // 50ms buffer window
-      } else if (!this.flickerFilterTimeout) {
-        // Safety: if no timer is running for some reason, ensure we eventually flush.
-        this.flickerFilterTimeout = setTimeout(() => {
-          this.flickerFilterTimeout = null;
-          this.flushFlickerBuffer();
-        }, SYNC_WAIT_TIMEOUT_MS);
-      }
-
-      // Safety valve: if buffer grew very large (e.g. from a burst before the timer fired),
-      // flush immediately to avoid writing a huge block all at once.
-      if (this.flickerFilterBuffer.length > 256 * 1024) {
-        if (this.flickerFilterTimeout) {
-          clearTimeout(this.flickerFilterTimeout);
-          this.flickerFilterTimeout = null;
-        }
-        this.flushFlickerBuffer();
-      }
-
-      return;
-    }
-
-    // Opt-in flicker filter: also buffer screen clear patterns
+    // Opt-in flicker filter: buffer screen clear patterns (for sessions that enable it)
     if (flickerFilterEnabled) {
       const hasScreenClear = data.includes('\x1b[2J') ||
                              data.includes('\x1b[H\x1b[J') ||
@@ -1265,34 +1365,10 @@ class CodemanApp {
     if (!this.writeFrameScheduled) {
       this.writeFrameScheduled = true;
       requestAnimationFrame(() => {
-        if (this.pendingWrites.length > 0 && this.terminal) {
-          // Join chunks for sync marker detection
-          const pending = this.pendingWrites.join('');
-          // Check if we have an incomplete sync block (SYNC_START without SYNC_END)
-          const hasStart = pending.includes(DEC_SYNC_START);
-          const hasEnd = pending.includes(DEC_SYNC_END);
-
-          if (hasStart && !hasEnd) {
-            // Incomplete sync block - wait for more data (up to 50ms max)
-            if (!this.syncWaitTimeout) {
-              this.syncWaitTimeout = setTimeout(() => {
-                this.syncWaitTimeout = null;
-                // Force flush after timeout to prevent stuck state
-                this.flushPendingWrites();
-              }, 50);
-            }
-            this.writeFrameScheduled = false;
-            return;
-          }
-
-          // Clear any pending sync wait timeout
-          if (this.syncWaitTimeout) {
-            clearTimeout(this.syncWaitTimeout);
-            this.syncWaitTimeout = null;
-          }
-
-          this.flushPendingWrites();
-        }
+        // xterm.js 6.0 handles DEC 2026 sync markers natively — it buffers
+        // content between 2026h/2026l and renders atomically. No need for
+        // client-side incomplete-block detection; just flush every frame.
+        this.flushPendingWrites();
         this.writeFrameScheduled = false;
       });
     }
@@ -1377,57 +1453,35 @@ class CodemanApp {
     if (this.pendingWrites.length === 0 || !this.terminal) return;
 
     const _t0 = performance.now();
-    // Extract segments, stripping DEC 2026 markers
-    // This implements synchronized output for xterm.js which doesn't support DEC 2026 natively
-    const _joinedLen = this.pendingWrites.reduce((s, w) => s + w.length, 0);
-    if (_joinedLen > 16384) _crashDiag.log(`FLUSH: ${(_joinedLen/1024).toFixed(0)}KB`);
+    // xterm.js 6.0+ natively handles DEC 2026 synchronized output markers.
+    // Pass raw data through — xterm.js buffers content between markers and
+    // renders atomically, eliminating split-frame Ink redraws.
     const joined = this.pendingWrites.join('');
     this.pendingWrites = [];
+    const _joinedLen = joined.length;
+    if (_joinedLen > 16384) _crashDiag.log(`FLUSH: ${(_joinedLen/1024).toFixed(0)}KB`);
 
-    const segments = extractSyncSegments(joined);
-
-    // Write segments respecting a per-frame byte budget.
-    // Each DEC 2026 sync segment is a complete Ink redraw — writing whole segments
-    // preserves atomicity (no flicker). But when total data exceeds 48KB, defer
-    // remaining segments to the next frame to prevent terminal.write() from blocking
-    // the main thread. 141KB single-frame writes have been observed to freeze Chrome
-    // for 2+ minutes even with the canvas renderer.
+    // Per-frame byte budget to prevent main thread blocking.
+    // Large writes (141KB+) can freeze Chrome for 2+ minutes.
     const MAX_FRAME_BYTES = 65536; // 64KB budget per frame
-    let bytesThisFrame = 0;
     let deferred = false;
 
-    for (let i = 0; i < segments.length; i++) {
-      const segment = segments[i];
-      if (!segment) continue;
-      const content = segment.startsWith(DEC_SYNC_START)
-        ? segment.slice(DEC_SYNC_START.length)
-        : segment;
-      if (!content) continue;
-
-      // If we'd exceed the budget, defer this and all remaining segments
-      if (bytesThisFrame > 0 && bytesThisFrame + content.length > MAX_FRAME_BYTES) {
-        // Re-queue remaining segments as raw content for next flush
-        const remaining = segments.slice(i).map(s => {
-          if (!s) return '';
-          return s.startsWith(DEC_SYNC_START) ? s.slice(DEC_SYNC_START.length) : s;
-        }).filter(Boolean).join('');
-        if (remaining) {
-          this.pendingWrites.push(remaining);
-          if (!this.writeFrameScheduled) {
-            this.writeFrameScheduled = true;
-            requestAnimationFrame(() => {
-              this.flushPendingWrites();
-              this.writeFrameScheduled = false;
-            });
-          }
-        }
-        deferred = true;
-        break;
+    if (_joinedLen <= MAX_FRAME_BYTES) {
+      this.terminal.write(joined);
+    } else {
+      // Write first chunk now, defer rest to next frame
+      this.terminal.write(joined.slice(0, MAX_FRAME_BYTES));
+      this.pendingWrites.push(joined.slice(MAX_FRAME_BYTES));
+      deferred = true;
+      if (!this.writeFrameScheduled) {
+        this.writeFrameScheduled = true;
+        requestAnimationFrame(() => {
+          this.flushPendingWrites();
+          this.writeFrameScheduled = false;
+        });
       }
-
-      this.terminal.write(content);
-      bytesThisFrame += content.length;
     }
+    const bytesThisFrame = deferred ? MAX_FRAME_BYTES : _joinedLen;
     const _dt = performance.now() - _t0;
     if (_dt > 100 || deferred) console.warn(`[CRASH-DIAG] flushPendingWrites: ${_dt.toFixed(0)}ms, ${(bytesThisFrame/1024).toFixed(0)}KB written${deferred ? ', rest deferred' : ''} (total ${(_joinedLen/1024).toFixed(0)}KB)`);
 
@@ -3008,6 +3062,9 @@ class CodemanApp {
       }
     });
 
+    // Restore tabs that were open before refresh but are no longer on the server
+    this._restoreEndedTabs();
+
     // Sync sessionOrder with current sessions (preserve order, add new, remove stale)
     this.syncSessionOrder();
 
@@ -3299,7 +3356,8 @@ class CodemanApp {
       const tallTabsEnabled = this._tallTabsEnabled ?? false;
       const showFolder = tallTabsEnabled && session.name && folderName && folderName !== name;
 
-      parts.push(`<div class="session-tab ${isActive ? 'active' : ''}${alertClass}" data-id="${id}" data-color="${color}" onclick="app.selectSession('${escapeHtml(id)}')" oncontextmenu="event.preventDefault(); app.startInlineRename('${escapeHtml(id)}')" tabindex="0" role="tab" aria-selected="${isActive ? 'true' : 'false'}" aria-label="${escapeHtml(name)} session" ${session.workingDir ? `title="${escapeHtml(session.workingDir)}"` : ''}>
+      const endedAttr = session._ended ? ' data-ended="1"' : '';
+      parts.push(`<div class="session-tab ${isActive ? 'active' : ''}${alertClass}" data-id="${id}" data-color="${color}"${endedAttr} onclick="app.selectSession('${escapeHtml(id)}')" oncontextmenu="event.preventDefault(); app.startInlineRename('${escapeHtml(id)}')" tabindex="0" role="tab" aria-selected="${isActive ? 'true' : 'false'}" aria-label="${escapeHtml(name)} session" ${session.workingDir ? `title="${escapeHtml(session.workingDir)}"` : ''}>
           <span class="tab-status ${status}" aria-hidden="true"></span>
           <span class="tab-info">
             <span class="tab-name-row">
@@ -3316,6 +3374,9 @@ class CodemanApp {
     }
 
     container.innerHTML = parts.join('');
+
+    // Persist tab metadata for refresh recovery
+    this._saveTabMetadata();
 
     // Set up drag-and-drop handlers for tab reordering
     this.setupTabDragHandlers();
@@ -3414,6 +3475,33 @@ class CodemanApp {
     } catch {
       // Ignore storage errors
     }
+  }
+
+  // Save tab metadata to localStorage so ended sessions can be restored after refresh
+  _saveTabMetadata() {
+    try {
+      const meta = {};
+      for (const [id, s] of this.sessions) {
+        if (s._ended) continue; // Don't persist ended stubs back
+        meta[id] = { id, name: s.name || '', workingDir: s.workingDir || '', mode: s.mode || 'claude', color: s.color || 'default' };
+      }
+      localStorage.setItem('codeman-tab-meta', JSON.stringify(meta));
+    } catch { /* ignore */ }
+  }
+
+  // Restore tabs that were open before refresh but are no longer on the server
+  _restoreEndedTabs() {
+    try {
+      const saved = localStorage.getItem('codeman-tab-meta');
+      if (!saved) return;
+      const meta = JSON.parse(saved);
+      for (const [id, info] of Object.entries(meta)) {
+        if (!this.sessions.has(id)) {
+          // Add a stub session so the tab renders
+          this.sessions.set(id, { id, name: info.name, workingDir: info.workingDir, mode: info.mode, color: info.color, status: 'ended', _ended: true });
+        }
+      }
+    } catch { /* ignore */ }
   }
 
   // Set up drag-and-drop handlers on tab elements
@@ -3639,12 +3727,22 @@ class CodemanApp {
     // Check if this is a restored session that needs to be attached
     const session = this.sessions.get(sessionId);
 
+    // Ended tabs (restored from localStorage, no longer on server) — show message, skip buffer load
+    if (session?._ended) {
+      this.terminal.clear();
+      this.terminal.write('\r\n  \x1b[2mSession ended. Close tab or click to reopen.\x1b[0m\r\n');
+      return;
+    }
+
     // Track working directory for path normalization in Project Insights
     this.currentSessionWorkingDir = session?.workingDir || null;
     if (session && session.pid === null && session.status === 'idle') {
-      // This is a restored session - attach to the existing screen
+      // This is a restored session - attach to the existing screen/shell
       try {
-        await fetch(`/api/sessions/${sessionId}/interactive`, { method: 'POST' });
+        const endpoint = session.mode === 'shell'
+          ? `/api/sessions/${sessionId}/shell`
+          : `/api/sessions/${sessionId}/interactive`;
+        await fetch(endpoint, { method: 'POST' });
         // Update local session state
         session.status = 'busy';
       } catch (err) {
@@ -4131,6 +4229,8 @@ class CodemanApp {
     this._runMode = mode;
     try { localStorage.setItem('codeman_runMode', mode); } catch {}
     this._applyRunMode();
+    // Sync to server for cross-device persistence
+    this._apiPut('/api/settings', { runMode: mode }).catch(() => {});
     // Close menu
     document.getElementById('runModeMenu')?.classList.remove('active');
   }
@@ -4144,8 +4244,9 @@ class CodemanApp {
     menu.querySelectorAll('.run-mode-option').forEach(btn => {
       btn.classList.toggle('selected', btn.dataset.mode === this.runMode);
     });
-    // Close on click outside
+    // Load history sessions when menu opens
     if (menu.classList.contains('active')) {
+      this._loadRunModeHistory();
       const close = (ev) => {
         if (!menu.contains(ev.target)) {
           menu.classList.remove('active');
@@ -4153,6 +4254,68 @@ class CodemanApp {
         }
       };
       setTimeout(() => document.addEventListener('click', close), 0);
+    }
+  }
+
+  async _loadRunModeHistory() {
+    const container = document.getElementById('runModeHistory');
+    if (!container) return;
+    container.innerHTML = '<div class="run-mode-hist-empty">Loading...</div>';
+
+    try {
+      const res = await fetch('/api/history/sessions');
+      const data = await res.json();
+      const sessions = data.sessions || [];
+
+      if (sessions.length === 0) {
+        container.innerHTML = '<div class="run-mode-hist-empty">No history</div>';
+        return;
+      }
+
+      // Deduplicate: up to 2 per dir, max 10 total
+      const byDir = new Map();
+      for (const s of sessions) {
+        if (!byDir.has(s.workingDir)) byDir.set(s.workingDir, []);
+        byDir.get(s.workingDir).push(s);
+      }
+      const items = [];
+      for (const [, group] of byDir) {
+        items.push(...group.slice(0, 2));
+      }
+      items.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
+      const display = items.slice(0, 10);
+
+      // Build items using DOM API for reliable mobile touch handling
+      container.replaceChildren();
+      for (const s of display) {
+        const date = new Date(s.lastModified);
+        const timeStr = date.toLocaleDateString('en', { month: 'short', day: 'numeric' })
+          + ' ' + date.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', hour12: false });
+        const shortDir = s.workingDir.replace(/^\/home\/[^/]+\//, '~/');
+
+        const btn = document.createElement('button');
+        btn.className = 'run-mode-option';
+        btn.title = s.workingDir;
+        btn.dataset.sessionId = s.sessionId;
+        btn.dataset.workingDir = s.workingDir;
+
+        const dirSpan = document.createElement('span');
+        dirSpan.className = 'hist-dir';
+        dirSpan.textContent = shortDir;
+
+        const metaSpan = document.createElement('span');
+        metaSpan.className = 'hist-meta';
+        metaSpan.textContent = timeStr;
+
+        btn.append(dirSpan, metaSpan);
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.resumeHistorySession(s.sessionId, s.workingDir);
+        });
+        container.appendChild(btn);
+      }
+    } catch (err) {
+      container.innerHTML = '<div class="run-mode-hist-empty">Failed to load</div>';
     }
   }
 
@@ -5048,13 +5211,13 @@ class CodemanApp {
   }
 
   increaseFontSize() {
-    const current = this.terminal.options.fontSize || 14;
+    const current = this.terminal.options.fontSize || 12;
     this.setFontSize(Math.min(current + 2, 24));
   }
 
   decreaseFontSize() {
-    const current = this.terminal.options.fontSize || 14;
-    this.setFontSize(Math.max(current - 2, 10));
+    const current = this.terminal.options.fontSize || 12;
+    this.setFontSize(Math.max(current - 2, 8));
   }
 
   setFontSize(size) {
@@ -5070,7 +5233,7 @@ class CodemanApp {
     const saved = localStorage.getItem('codeman-font-size');
     if (saved) {
       const size = parseInt(saved, 10);
-      if (size >= 10 && size <= 24) {
+      if (size >= 8 && size <= 24) {
         this.terminal.options.fontSize = size;
         document.getElementById('fontSizeDisplay').textContent = size;
       }
@@ -5482,6 +5645,9 @@ class CodemanApp {
   // ═══════════════════════════════════════════════════════════════
 
   loadRespawnPresets() {
+    // Custom presets: prefer server-synced cache, fall back to legacy localStorage key
+    const serverCache = this._serverRespawnPresets;
+    if (serverCache) return [...BUILTIN_RESPAWN_PRESETS, ...serverCache];
     const saved = localStorage.getItem('codeman-respawn-presets');
     const custom = saved ? JSON.parse(saved) : [];
     return [...BUILTIN_RESPAWN_PRESETS, ...custom];
@@ -5490,7 +5656,11 @@ class CodemanApp {
   saveRespawnPresets(presets) {
     // Only save custom presets (not built-in)
     const custom = presets.filter(p => !p.builtIn);
+    // Update local cache + legacy localStorage
+    this._serverRespawnPresets = custom;
     localStorage.setItem('codeman-respawn-presets', JSON.stringify(custom));
+    // Persist to server (cross-device sync)
+    this._apiPut('/api/settings', { respawnPresets: custom }).catch(() => {});
   }
 
   renderPresetDropdown() {
@@ -7649,7 +7819,7 @@ class CodemanApp {
       const settings = settingsPromise ? await settingsPromise : await fetch('/api/settings').then(r => r.ok ? r.json() : null);
       if (settings) {
         // Extract notification prefs before merging app settings
-        const { notificationPreferences, voiceSettings, ...appSettings } = settings;
+        const { notificationPreferences, voiceSettings, respawnPresets, runMode, ...appSettings } = settings;
         // Filter out display settings — these are device-specific (mobile vs desktop)
         // and should not be synced from the server to avoid overriding mobile defaults.
         // NOTE: Feature toggles (subagentTrackingEnabled, imageWatcherEnabled, ralphTrackerEnabled)
@@ -7692,6 +7862,30 @@ class CodemanApp {
           if (!localVoice || !JSON.parse(localVoice).apiKey) {
             VoiceInput._saveDeepgramConfig(voiceSettings);
           }
+        }
+
+        // Sync respawn presets from server (server is source of truth)
+        if (respawnPresets && Array.isArray(respawnPresets)) {
+          this._serverRespawnPresets = respawnPresets;
+          // Also update localStorage for offline access
+          localStorage.setItem('codeman-respawn-presets', JSON.stringify(respawnPresets));
+        } else {
+          // Migration: push existing localStorage presets to server
+          const localPresets = localStorage.getItem('codeman-respawn-presets');
+          if (localPresets) {
+            const parsed = JSON.parse(localPresets);
+            if (parsed.length > 0) {
+              this._serverRespawnPresets = parsed;
+              this._apiPut('/api/settings', { respawnPresets: parsed }).catch(() => {});
+            }
+          }
+        }
+
+        // Sync run mode from server
+        if (runMode) {
+          this.runMode = runMode;
+          try { localStorage.setItem('codeman_runMode', runMode); } catch {}
+          this._applyRunMode();
         }
 
         return merged;

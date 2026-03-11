@@ -250,10 +250,10 @@ if (isGlobalInstall) {
 } else {
     try {
         const require = createRequire(import.meta.url);
-        const xtermDir = join(require.resolve('xterm'), '..', '..');
-        const fitDir = join(require.resolve('xterm-addon-fit'), '..', '..');
-        const webglDir = join(require.resolve('xterm-addon-webgl'), '..', '..');
-        const unicode11Dir = join(require.resolve('xterm-addon-unicode11'), '..', '..');
+        const xtermDir = join(require.resolve('@xterm/xterm'), '..', '..');
+        const fitDir = join(require.resolve('@xterm/addon-fit'), '..', '..');
+        const webglDir = join(require.resolve('@xterm/addon-webgl'), '..', '..');
+        const unicode11Dir = join(require.resolve('@xterm/addon-unicode11'), '..', '..');
         const vendorDir = join(srcDir, 'web', 'public', 'vendor');
 
         const { mkdirSync, copyFileSync } = await import('fs');
@@ -263,19 +263,19 @@ if (isGlobalInstall) {
         // Minify xterm JS for dev vendor dir (npm packages don't ship .min.js)
         try {
             execSync(`npx esbuild "${join(xtermDir, 'lib', 'xterm.js')}" --minify --outfile="${join(vendorDir, 'xterm.min.js')}"`, { stdio: 'pipe' });
-            execSync(`npx esbuild "${join(fitDir, 'lib', 'xterm-addon-fit.js')}" --minify --outfile="${join(vendorDir, 'xterm-addon-fit.min.js')}"`, { stdio: 'pipe' });
-            execSync(`npx esbuild "${join(unicode11Dir, 'lib', 'xterm-addon-unicode11.js')}" --minify --outfile="${join(vendorDir, 'xterm-addon-unicode11.min.js')}"`, { stdio: 'pipe' });
+            execSync(`npx esbuild "${join(fitDir, 'lib', 'addon-fit.js')}" --minify --outfile="${join(vendorDir, 'xterm-addon-fit.min.js')}"`, { stdio: 'pipe' });
+            execSync(`npx esbuild "${join(unicode11Dir, 'lib', 'addon-unicode11.js')}" --minify --outfile="${join(vendorDir, 'xterm-addon-unicode11.min.js')}"`, { stdio: 'pipe' });
             console.log(colors.green('✓ xterm vendor files copied to src/web/public/vendor/'));
         } catch {
             // Fallback: copy unminified
             copyFileSync(join(xtermDir, 'lib', 'xterm.js'), join(vendorDir, 'xterm.min.js'));
-            copyFileSync(join(fitDir, 'lib', 'xterm-addon-fit.js'), join(vendorDir, 'xterm-addon-fit.min.js'));
-            copyFileSync(join(unicode11Dir, 'lib', 'xterm-addon-unicode11.js'), join(vendorDir, 'xterm-addon-unicode11.min.js'));
+            copyFileSync(join(fitDir, 'lib', 'addon-fit.js'), join(vendorDir, 'xterm-addon-fit.min.js'));
+            copyFileSync(join(unicode11Dir, 'lib', 'addon-unicode11.js'), join(vendorDir, 'xterm-addon-unicode11.min.js'));
             console.log(colors.green('✓ xterm vendor files copied') + colors.dim(' (unminified — esbuild not available)'));
         }
 
         // WebGL addon: copy unminified (matches build script behavior)
-        copyFileSync(join(webglDir, 'lib', 'xterm-addon-webgl.js'), join(vendorDir, 'xterm-addon-webgl.min.js'));
+        copyFileSync(join(webglDir, 'lib', 'addon-webgl.js'), join(vendorDir, 'xterm-addon-webgl.min.js'));
 
         // xterm-zerolag-input: bundle local package as IIFE for <script> tag loading
         try {

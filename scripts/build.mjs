@@ -35,12 +35,12 @@ run('prepare dirs', 'mkdir -p dist/web dist/templates dist/web/public/vendor');
 run('copy web assets', 'cp -r src/web/public dist/web/');
 run('copy template', 'cp src/templates/case-template.md dist/templates/');
 
-// 3. Vendor xterm bundles
-run('xterm css', 'cp node_modules/xterm/css/xterm.css dist/web/public/vendor/');
-run('xterm js', 'npx esbuild node_modules/xterm/lib/xterm.js --minify --outfile=dist/web/public/vendor/xterm.min.js');
-run('xterm-addon-fit', 'npx esbuild node_modules/xterm-addon-fit/lib/xterm-addon-fit.js --minify --outfile=dist/web/public/vendor/xterm-addon-fit.min.js');
-run('xterm-addon-webgl', 'cp node_modules/xterm-addon-webgl/lib/xterm-addon-webgl.js dist/web/public/vendor/xterm-addon-webgl.min.js');
-run('xterm-addon-unicode11', 'npx esbuild node_modules/xterm-addon-unicode11/lib/xterm-addon-unicode11.js --minify --outfile=dist/web/public/vendor/xterm-addon-unicode11.min.js');
+// 3. Vendor xterm bundles (xterm.js 6.x — @xterm scoped packages)
+run('xterm css', 'cp node_modules/@xterm/xterm/css/xterm.css dist/web/public/vendor/');
+run('xterm js', 'npx esbuild node_modules/@xterm/xterm/lib/xterm.js --minify --outfile=dist/web/public/vendor/xterm.min.js');
+run('xterm-addon-fit', 'npx esbuild node_modules/@xterm/addon-fit/lib/addon-fit.js --minify --outfile=dist/web/public/vendor/xterm-addon-fit.min.js');
+run('xterm-addon-webgl', 'cp node_modules/@xterm/addon-webgl/lib/addon-webgl.js dist/web/public/vendor/xterm-addon-webgl.min.js');
+run('xterm-addon-unicode11', 'npx esbuild node_modules/@xterm/addon-unicode11/lib/addon-unicode11.js --minify --outfile=dist/web/public/vendor/xterm-addon-unicode11.min.js');
 run('xterm-zerolag-input', 'npx esbuild packages/xterm-zerolag-input/src/zerolag-input-addon.ts --bundle --minify --format=iife --global-name=XtermZerolagInput --outfile=dist/web/public/vendor/xterm-zerolag-input.js');
 
 // Append global aliases so app.js can use `new LocalEchoOverlay(terminal)`

@@ -127,8 +127,8 @@ import {
 // When terminal supports this, it buffers all output between start/end markers
 // and renders atomically, eliminating partial-frame flicker from Ink redraws.
 // Supported by: WezTerm, Kitty, Ghostty, iTerm2 3.5+, Windows Terminal, VSCode terminal
-const DEC_SYNC_START = '\x1b[?2026h'; // Begin synchronized update
-const DEC_SYNC_END = '\x1b[?2026l'; // End synchronized update (flush to screen)
+// DEC 2026 sync markers no longer added server-side — xterm.js 6.0 handles
+// them natively and Claude CLI already emits its own markers via Ink.
 
 // SSE padding for Cloudflare tunnel buffer flushing.
 // Cloudflare quick tunnels buffer small SSE responses, causing lag for real-time events.
@@ -2127,14 +2127,13 @@ export class WebServer extends EventEmitter {
     if (chunks && chunks.length > 0) {
       // Join chunks only at flush time (avoids O(n^2) string concatenation in batchTerminalData)
       const data = chunks.join('');
-      // Wrap with DEC mode 2026 synchronized output markers
-      // Terminal buffers all output between markers and renders atomically,
-      // eliminating partial-frame flicker from Ink's full-screen redraws.
-      // Unsupported terminals ignore these sequences harmlessly.
-      const syncData = DEC_SYNC_START + data + DEC_SYNC_END;
+      // xterm.js 6.0+ handles DEC 2026 synchronized output natively.
+      // Claude CLI (Ink) already emits its own DEC 2026 markers around redraws.
+      // Do NOT add an outer wrapper — DEC 2026 is not reference-counted, so
+      // the inner 2026l would prematurely exit sync mode, defeating the purpose.
       // Fast path: build SSE message directly without JSON.stringify on wrapper object.
       // Only the terminal data string needs escaping; sessionId is a UUID (safe to template).
-      const escapedData = JSON.stringify(syncData);
+      const escapedData = JSON.stringify(data);
       // Append tunnel padding for immediate Cloudflare proxy flush —
       // terminal data is high-frequency and latency-sensitive.
       const padding = this._isTunnelActive ? SSE_PADDING : '';
