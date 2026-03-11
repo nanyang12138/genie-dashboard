@@ -5,7 +5,7 @@
  * that replaces ~43 inline not-found checks across route handlers.
  */
 
-import { join } from 'node:path';
+import { join, resolve, relative, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
 import { Session } from '../session.js';
 import { ApiErrorCode, createErrorResponse } from '../types.js';
@@ -17,6 +17,20 @@ import type { EventPort } from './ports/event-port.js';
 // Shared path constants used across route modules
 export const CASES_DIR = join(homedir(), 'codeman-cases');
 export const SETTINGS_PATH = join(homedir(), '.codeman', 'settings.json');
+
+/**
+ * Validates that a path component doesn't escape the base directory.
+ * Returns the resolved full path, or null if the path is a traversal attempt.
+ */
+export function validatePathWithinBase(name: string, baseDir: string): string | null {
+  const fullPath = resolve(join(baseDir, name));
+  const resolvedBase = resolve(baseDir);
+  const relPath = relative(resolvedBase, fullPath);
+  if (relPath.startsWith('..') || isAbsolute(relPath)) {
+    return null;
+  }
+  return fullPath;
+}
 
 // Maximum hook data size (prevents oversized SSE broadcasts)
 const MAX_HOOK_DATA_SIZE = 8 * 1024;

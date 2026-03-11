@@ -5,7 +5,7 @@
  */
 
 import { FastifyInstance } from 'fastify';
-import { join, dirname, resolve, relative, isAbsolute } from 'node:path';
+import { join, dirname } from 'node:path';
 import { existsSync, statSync, mkdirSync, writeFileSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import {
@@ -32,7 +32,7 @@ import {
   QuickRunSchema,
   QuickStartSchema,
 } from '../schemas.js';
-import { autoConfigureRalph, CASES_DIR, SETTINGS_PATH } from '../route-helpers.js';
+import { autoConfigureRalph, CASES_DIR, SETTINGS_PATH, validatePathWithinBase } from '../route-helpers.js';
 import { AUTH_COOKIE_NAME } from '../middleware/auth.js';
 import { writeHooksConfig, updateCaseEnvVars } from '../../hooks-config.js';
 import { generateClaudeMd } from '../../templates/claude-md.js';
@@ -788,13 +788,8 @@ export function registerSessionRoutes(
       }
     }
 
-    const casePath = join(CASES_DIR, caseName);
-
-    // Security: Path traversal protection - use relative path check
-    const resolvedPath = resolve(casePath);
-    const resolvedBase = resolve(CASES_DIR);
-    const relPath = relative(resolvedBase, resolvedPath);
-    if (relPath.startsWith('..') || isAbsolute(relPath)) {
+    const casePath = validatePathWithinBase(caseName, CASES_DIR);
+    if (!casePath) {
       return createErrorResponse(ApiErrorCode.INVALID_INPUT, 'Invalid case path');
     }
 

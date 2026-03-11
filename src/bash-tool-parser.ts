@@ -15,7 +15,7 @@
 import { EventEmitter } from 'node:events';
 import { v4 as uuidv4 } from 'uuid';
 import { ActiveBashTool } from './types.js';
-import { CleanupManager, Debouncer } from './utils/index.js';
+import { CleanupManager, Debouncer, stripAnsi } from './utils/index.js';
 
 // ========== Configuration Constants ==========
 
@@ -462,7 +462,7 @@ export class BashToolParser extends EventEmitter<BashToolParserEvents> {
    * Process a single line of terminal output (raw — will strip ANSI).
    */
   private processLine(line: string): void {
-    const cleanLine = this.stripAnsi(line);
+    const cleanLine = stripAnsi(line);
     this.processCleanLine(cleanLine);
   }
 
@@ -666,15 +666,6 @@ export class BashToolParser extends EventEmitter<BashToolParserEvents> {
 
     // Deduplicate paths that resolve to the same file
     return this.deduplicatePaths(rawPaths);
-  }
-
-  /**
-   * Strip ANSI escape codes from a string.
-   */
-  private stripAnsi(str: string): string {
-    // Comprehensive ANSI pattern
-    // eslint-disable-next-line no-control-regex
-    return str.replace(/\x1b(?:\[[0-9;?]*[A-Za-z]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[=>])/g, '');
   }
 
   /**

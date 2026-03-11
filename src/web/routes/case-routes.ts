@@ -7,14 +7,14 @@
 import { FastifyInstance } from 'fastify';
 import { existsSync, mkdirSync, writeFileSync, readdirSync } from 'node:fs';
 import fs from 'node:fs/promises';
-import { join, resolve, relative, isAbsolute } from 'node:path';
+import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import type { ApiResponse, CaseInfo } from '../../types.js';
 import { ApiErrorCode, createErrorResponse, getErrorMessage } from '../../types.js';
 import { CreateCaseSchema, LinkCaseSchema } from '../schemas.js';
 import { generateClaudeMd } from '../../templates/claude-md.js';
 import { writeHooksConfig } from '../../hooks-config.js';
-import { CASES_DIR } from '../route-helpers.js';
+import { CASES_DIR, validatePathWithinBase } from '../route-helpers.js';
 import { SseEvent } from '../sse-events.js';
 import type { EventPort, ConfigPort } from '../ports/index.js';
 
@@ -74,13 +74,8 @@ export function registerCaseRoutes(app: FastifyInstance, ctx: EventPort & Config
     }
     const { name, description } = result.data;
 
-    const casePath = join(CASES_DIR, name);
-
-    // Security: Path traversal protection - use relative path check
-    const resolvedPath = resolve(casePath);
-    const resolvedBase = resolve(CASES_DIR);
-    const relPath = relative(resolvedBase, resolvedPath);
-    if (relPath.startsWith('..') || isAbsolute(relPath)) {
+    const casePath = validatePathWithinBase(name, CASES_DIR);
+    if (!casePath) {
       return createErrorResponse(ApiErrorCode.INVALID_INPUT, 'Invalid case path');
     }
 
@@ -167,11 +162,7 @@ export function registerCaseRoutes(app: FastifyInstance, ctx: EventPort & Config
   app.get('/api/cases/:name', async (req) => {
     const { name } = req.params as { name: string };
 
-    // Security: Path traversal protection
-    const resolvedPath = resolve(join(CASES_DIR, name));
-    const resolvedBase = resolve(CASES_DIR);
-    const relPath = relative(resolvedBase, resolvedPath);
-    if (relPath.startsWith('..') || isAbsolute(relPath)) {
+    if (!validatePathWithinBase(name, CASES_DIR)) {
       return createErrorResponse(ApiErrorCode.INVALID_INPUT, 'Invalid case name');
     }
 
@@ -210,11 +201,7 @@ export function registerCaseRoutes(app: FastifyInstance, ctx: EventPort & Config
   app.get('/api/cases/:name/fix-plan', async (req) => {
     const { name } = req.params as { name: string };
 
-    // Security: Path traversal protection
-    const resolvedPath = resolve(join(CASES_DIR, name));
-    const resolvedBase = resolve(CASES_DIR);
-    const relPath = relative(resolvedBase, resolvedPath);
-    if (relPath.startsWith('..') || isAbsolute(relPath)) {
+    if (!validatePathWithinBase(name, CASES_DIR)) {
       return createErrorResponse(ApiErrorCode.INVALID_INPUT, 'Invalid case name');
     }
 
@@ -334,13 +321,8 @@ export function registerCaseRoutes(app: FastifyInstance, ctx: EventPort & Config
 
   app.get('/api/cases/:caseName/ralph-wizard/files', async (req) => {
     const { caseName } = req.params as { caseName: string };
-    let casePath = join(CASES_DIR, caseName);
-
-    // Security: Path traversal protection - use relative path check
-    const resolvedCase = resolve(casePath);
-    const resolvedBase = resolve(CASES_DIR);
-    const relPath = relative(resolvedBase, resolvedCase);
-    if (relPath.startsWith('..') || isAbsolute(relPath)) {
+    let casePath = validatePathWithinBase(caseName, CASES_DIR);
+    if (!casePath) {
       return createErrorResponse(ApiErrorCode.INVALID_INPUT, 'Invalid case name');
     }
 
@@ -394,20 +376,15 @@ export function registerCaseRoutes(app: FastifyInstance, ctx: EventPort & Config
   // Cache disabled to ensure fresh prompts when starting new plan generations
   app.get('/api/cases/:caseName/ralph-wizard/file/:filePath', async (req, reply) => {
     const { caseName, filePath } = req.params as { caseName: string; filePath: string };
-    let casePath = join(CASES_DIR, caseName);
+    let casePath = validatePathWithinBase(caseName, CASES_DIR);
+    if (!casePath) {
+      return createErrorResponse(ApiErrorCode.INVALID_INPUT, 'Invalid case name');
+    }
 
     // Prevent browser caching - prompts change between plan generations
     reply.header('Cache-Control', 'no-store, no-cache, must-revalidate');
     reply.header('Pragma', 'no-cache');
     reply.header('Expires', '0');
-
-    // Security: Path traversal protection for case name - use relative path check
-    const resolvedCase = resolve(casePath);
-    const resolvedBase = resolve(CASES_DIR);
-    const relPath = relative(resolvedBase, resolvedCase);
-    if (relPath.startsWith('..') || isAbsolute(relPath)) {
-      return createErrorResponse(ApiErrorCode.INVALID_INPUT, 'Invalid case name');
-    }
 
     // Check linked cases if path doesn't exist
     if (!existsSync(casePath)) {

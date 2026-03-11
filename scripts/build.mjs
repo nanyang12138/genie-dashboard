@@ -8,13 +8,15 @@
  *   2. Copy static assets (web/public, templates)
  *   3. Build vendor xterm bundles
  *   4. Minify frontend assets (app.js, styles.css, mobile.css)
- *   5. Compress with gzip + brotli
+ *   5. Content-hash cache busting (rename assets, rewrite index.html)
+ *   6. Compress with gzip + brotli
  */
 
 import { execSync } from 'child_process';
-import { appendFileSync } from 'fs';
+import { appendFileSync, readFileSync, writeFileSync, renameSync } from 'fs';
+import { createHash } from 'crypto';
 import { fileURLToPath } from 'url';
-import { join } from 'path';
+import { join, extname, basename, dirname } from 'path';
 
 const ROOT = join(fileURLToPath(import.meta.url), '..', '..');
 
@@ -27,7 +29,8 @@ function run(label, cmd) {
 run('tsc', 'tsc');
 run('chmod dist/index.js', 'chmod +x dist/index.js');
 
-// 2. Copy static assets
+// 2. Copy static assets (clean first to remove stale hashed files from previous builds)
+run('clean public', 'rm -rf dist/web/public');
 run('prepare dirs', 'mkdir -p dist/web dist/templates dist/web/public/vendor');
 run('copy web assets', 'cp -r src/web/public dist/web/');
 run('copy template', 'cp src/templates/case-template.md dist/templates/');
@@ -60,7 +63,49 @@ run('minify app.js', 'npx esbuild dist/web/public/app.js --minify --outfile=dist
 run('minify styles.css', 'npx esbuild dist/web/public/styles.css --minify --outfile=dist/web/public/styles.css --allow-overwrite');
 run('minify mobile.css', 'npx esbuild dist/web/public/mobile.css --minify --outfile=dist/web/public/mobile.css --allow-overwrite');
 
-// 5. Compress with gzip + brotli
+// 5. Content-hash cache busting
+console.log('\n[build] content-hash cache busting');
+{
+  const distPublic = join(ROOT, 'dist/web/public');
+  const HASHABLE = [
+    'styles.css',
+    'mobile.css',
+    'constants.js',
+    'mobile-handlers.js',
+    'voice-input.js',
+    'notification-manager.js',
+    'keyboard-accessory.js',
+    'app.js',
+    'ralph-wizard.js',
+    'api-client.js',
+    'subagent-windows.js',
+    'vendor/xterm-zerolag-input.js',
+  ];
+  const manifest = {};
+  for (const file of HASHABLE) {
+    const filePath = join(distPublic, file);
+    const content = readFileSync(filePath);
+    const hash = createHash('md5').update(content).digest('hex').slice(0, 8);
+    const ext = extname(file);
+    const base = basename(file, ext);
+    const dir = dirname(file);
+    const hashed = dir === '.' ? `${base}.${hash}${ext}` : `${dir}/${base}.${hash}${ext}`;
+    renameSync(filePath, join(distPublic, hashed));
+    manifest[file] = hashed;
+  }
+  // Rewrite index.html to reference hashed filenames
+  let html = readFileSync(join(distPublic, 'index.html'), 'utf8');
+  for (const [original, hashed] of Object.entries(manifest)) {
+    html = html.replaceAll(`"${original}"`, `"${hashed}"`);
+  }
+  writeFileSync(join(distPublic, 'index.html'), html);
+  console.log('  Hashed files:');
+  for (const [orig, hashed] of Object.entries(manifest)) {
+    console.log(`    ${orig} -> ${hashed}`);
+  }
+}
+
+// 6. Compress with gzip + brotli
 run(
   'compress',
   `for f in dist/web/public/*.js dist/web/public/*.css dist/web/public/*.html dist/web/public/vendor/*.js dist/web/public/vendor/*.css; do` +

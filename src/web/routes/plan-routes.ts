@@ -5,7 +5,7 @@
  */
 
 import { FastifyInstance } from 'fastify';
-import { join, resolve, relative, isAbsolute } from 'node:path';
+import { join } from 'node:path';
 import { existsSync, rmSync } from 'node:fs';
 import { Session } from '../../session.js';
 import { ApiErrorCode, createErrorResponse, getErrorMessage, type ApiResponse } from '../../types.js';
@@ -17,7 +17,7 @@ import {
   PlanTaskUpdateSchema,
   PlanTaskAddSchema,
 } from '../schemas.js';
-import { findSessionOrFail, CASES_DIR } from '../route-helpers.js';
+import { findSessionOrFail, CASES_DIR, validatePathWithinBase } from '../route-helpers.js';
 import { SseEvent } from '../sse-events.js';
 import type { SessionPort, EventPort, ConfigPort, InfraPort } from '../ports/index.js';
 
@@ -232,12 +232,8 @@ NOW: Generate the implementation plan for the task above. Think step by step.`;
     // Determine output directory for saving wizard results
     let outputDir: string | undefined;
     if (caseName) {
-      const casePath = join(CASES_DIR, caseName);
-      // Security: Path traversal protection - use relative path check
-      const resolvedCase = resolve(casePath);
-      const resolvedBase = resolve(CASES_DIR);
-      const relPath = relative(resolvedBase, resolvedCase);
-      if (!relPath.startsWith('..') && !isAbsolute(relPath) && existsSync(casePath)) {
+      const casePath = validatePathWithinBase(caseName, CASES_DIR);
+      if (casePath && existsSync(casePath)) {
         outputDir = join(casePath, 'ralph-wizard');
 
         // Clear old ralph-wizard directory to ensure fresh prompts for each generation

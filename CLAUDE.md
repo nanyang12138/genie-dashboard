@@ -44,7 +44,7 @@ When user says "COM":
    "aicodeman": patch
    ---
 
-   Description of changes
+   Detailed description of ALL changes since last release (not just the most recent commit — review full git log since last version tag)
    CHANGESET
    ```
    Replace `patch` with `minor` or `major` as needed. Include `"xterm-zerolag-input": patch` on a separate line if that package changed too.
@@ -52,7 +52,7 @@ When user says "COM":
 4. **Sync CLAUDE.md version**: Update the `**Version**` line below to match the new version from `package.json`
 5. **Commit and deploy**: `git add -A && git commit -m "chore: version packages" && git push && npm run build && systemctl --user restart codeman-web`
 
-**Version**: 0.3.8 (must match `package.json`)
+**Version**: 0.3.9 (must match `package.json`)
 
 ## Project Overview
 
