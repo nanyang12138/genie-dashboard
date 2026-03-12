@@ -1291,7 +1291,8 @@ update() {
         success "codeman-web service restarted"
     else
         echo -e "  ${DIM}Restart codeman web to use the new version:${NC}"
-        echo -e "    ${CYAN}codeman web${NC}  ${DIM}# or: node ~/.codeman/app/dist/index.js web${NC}"
+        echo -e "    ${DIM}Stop the running process (Ctrl+C), then:${NC}"
+        echo -e "    ${CYAN}codeman web${NC}"
     fi
     echo ""
 }
