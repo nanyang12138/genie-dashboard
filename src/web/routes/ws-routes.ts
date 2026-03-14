@@ -81,7 +81,15 @@ export function registerWsRoutes(app: FastifyInstance, ctx: SessionPort): void {
         if (msg.t === 'i' && typeof msg.d === 'string') {
           if (msg.d.length > MAX_INPUT_LENGTH) return;
           session.write(msg.d);
-        } else if (msg.t === 'z' && typeof msg.c === 'number' && typeof msg.r === 'number') {
+        } else if (
+          msg.t === 'z' &&
+          Number.isInteger(msg.c) &&
+          Number.isInteger(msg.r) &&
+          msg.c >= 1 &&
+          msg.c <= 500 &&
+          msg.r >= 1 &&
+          msg.r <= 200
+        ) {
           session.resize(msg.c, msg.r);
         }
       } catch {
