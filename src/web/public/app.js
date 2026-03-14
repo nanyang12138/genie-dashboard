@@ -666,6 +666,7 @@ class CodemanApp {
         const wglScript = document.createElement('script');
         wglScript.src = 'vendor/xterm-addon-webgl.min.js';
         wglScript.onload = () => this._initWebGL();
+        wglScript.onerror = () => console.warn('[CRASH-DIAG] Failed to load WebGL addon — using canvas renderer');
         document.head.appendChild(wglScript);
       }
     }
