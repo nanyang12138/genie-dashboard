@@ -1,5 +1,11 @@
 # aicodeman
 
+## 0.4.3
+
+### Patch Changes
+
+- Refactor case routes: extract readLinkedCases() and resolveCasePath() helpers to eliminate 6x duplicated linked-cases.json path construction and 5x duplicated file read/parse logic. Replace O(n) .some() duplicate check with O(1) Set.has() in case listing. Un-export unused isError() type guard. Standardize reply.status() to reply.code() in system routes. Update CLAUDE.md frontend module listing and SSE event count.
+
 ## 0.4.2
 
 ### Patch Changes
