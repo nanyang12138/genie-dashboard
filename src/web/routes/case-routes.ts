@@ -25,19 +25,19 @@ async function readLinkedCases(): Promise<Record<string, string>> {
   try {
     return JSON.parse(await fs.readFile(LINKED_CASES_FILE, 'utf-8'));
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+    // Only warn on real I/O errors, not ENOENT (file missing) or SyntaxError (corrupted JSON)
+    if ((err as NodeJS.ErrnoException).code && (err as NodeJS.ErrnoException).code !== 'ENOENT') {
       console.warn('[Server] Failed to read linked cases:', err);
     }
     return {};
   }
 }
 
-/** Resolve a case name to its directory path, checking linked cases if not in CASES_DIR. */
+/** Resolve a case name to its directory path, checking linked cases first, then CASES_DIR. */
 async function resolveCasePath(name: string): Promise<string> {
-  const casePath = join(CASES_DIR, name);
-  if (existsSync(casePath)) return casePath;
   const linkedCases = await readLinkedCases();
-  return linkedCases[name] ?? casePath;
+  if (linkedCases[name]) return linkedCases[name];
+  return join(CASES_DIR, name);
 }
 
 export function registerCaseRoutes(app: FastifyInstance, ctx: EventPort & ConfigPort): void {
