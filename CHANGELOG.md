@@ -1,5 +1,16 @@
 # aicodeman
 
+## 0.4.6
+
+### Patch Changes
+
+- Fix mobile keyboard scroll and layout issues:
+  - Prevent iOS Safari from scrolling the page when typing with the keyboard open (position:fixed on .app + window.scroll reset)
+  - Eliminate dead space between terminal and keyboard accessory bar by removing redundant CSS padding, tightening JS padding constant, and adding row quantization gap compensation
+  - Fix toolbar overlapping terminal content when keyboard is hidden by adding proper padding-bottom to .main, including iOS Safari bottom bar offset
+  - Strip Ink spinner bloat from terminal buffer before tailing
+  - Fix resolveCasePath priority order and suppress JSON parse warnings
+
 ## 0.4.5
 
 ### Patch Changes
