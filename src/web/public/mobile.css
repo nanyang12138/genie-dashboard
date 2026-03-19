@@ -534,6 +534,17 @@ html.mobile-init .file-browser-panel {
     bottom: calc(var(--safe-area-bottom) + (100vh - var(--app-height, 100vh)));
   }
 
+  /* When keyboard is visible the JS translateY already accounts for the full
+     distance from the visual-viewport bottom to the layout-viewport bottom
+     (keyboard + Safari bar).  Remove the CSS Safari-bar offset to avoid
+     double-counting, which otherwise creates a visible gap above the keyboard. */
+  .keyboard-visible.ios-device.safari-browser .toolbar {
+    bottom: var(--safe-area-bottom);
+  }
+  .keyboard-visible.ios-device.safari-browser .keyboard-accessory-bar {
+    bottom: calc(var(--safe-area-bottom) + 40px);
+  }
+
   /* Show case selector in center */
   .toolbar-center {
     display: flex !important;

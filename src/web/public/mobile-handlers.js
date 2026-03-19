@@ -272,35 +272,31 @@ const KeyboardHandler = {
     const main = document.querySelector('.main');
 
     if (this.keyboardVisible) {
-      // Calculate keyboard offset
+      // Calculate how far the toolbar (position:fixed, bottom:0) needs to
+      // translate up so it sits at the bottom of the visual viewport.
+      // This formula accounts for iOS scrolling the visual viewport (offsetTop)
+      // when the user types in xterm's hidden textarea.
       const layoutHeight = window.innerHeight;
       const visualBottom = window.visualViewport.offsetTop + window.visualViewport.height;
-      const keyboardOffset = layoutHeight - visualBottom;
+      const keyboardOffset = Math.max(0, layoutHeight - visualBottom);
 
-      // Safety: if keyboard is supposedly visible but offset is 0 or negative,
-      // the keyboard is actually gone — force dismiss. This catches cases where
-      // visualViewport.resize fires late or with intermediate values on iOS.
-      if (keyboardOffset <= 0) {
-        this.keyboardVisible = false;
-        document.body.classList.remove('keyboard-visible');
-        this.onKeyboardHide();
-        return;
-      }
-
-      // Move toolbar up above keyboard
+      // Move toolbar and accessory bar above keyboard.
+      // When keyboardOffset is 0 (viewport scrolled to layout bottom),
+      // the bars are naturally positioned via their CSS bottom values —
+      // just clear the transforms.  Never dismiss keyboard state here;
+      // that's handleViewportResize's job.
       if (toolbar) {
-        toolbar.style.transform = `translateY(${-keyboardOffset}px)`;
+        toolbar.style.transform = keyboardOffset > 0 ? `translateY(${-keyboardOffset}px)` : '';
       }
-
-      // Move accessory bar up (it sits above toolbar)
       if (accessoryBar) {
-        accessoryBar.style.transform = `translateY(${-keyboardOffset}px)`;
+        accessoryBar.style.transform = keyboardOffset > 0 ? `translateY(${-keyboardOffset}px)` : '';
       }
 
-      // Shrink main content area so terminal doesn't extend behind keyboard
-      // Account for keyboard height + toolbar height (40px) + accessory bar (44px)
-      if (main) {
-        main.style.paddingBottom = `${keyboardOffset + 94}px`;
+      // Shrink main content area so terminal doesn't extend behind keyboard.
+      // Use stable keyboard height (not scroll-dependent) for padding.
+      const keyboardHeight = this.initialViewportHeight - (window.visualViewport.height || window.innerHeight);
+      if (main && keyboardHeight > 0) {
+        main.style.paddingBottom = `${keyboardHeight + 94}px`;
       }
     } else {
       this.resetLayout();

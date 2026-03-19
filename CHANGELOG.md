@@ -1,5 +1,11 @@
 # aicodeman
 
+## 0.4.5
+
+### Patch Changes
+
+- Fix mobile keyboard toolbar positioning on iOS Safari: toolbar (Run/Stop/Run Shell) was hidden behind the accessory bar when virtual keyboard was active due to overlapping CSS positions. Remove the aggressive safety check in `updateLayoutForKeyboard()` that incorrectly dismissed keyboard state when iOS scrolled the visual viewport during typing. Add Safari-bar CSS offset to accessory bar so it properly stacks above the toolbar. Remove the double-counted Safari-bar offset when keyboard is visible since the JS transform already covers the full distance.
+
 ## 0.4.4
 
 ### Patch Changes
