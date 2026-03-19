@@ -320,9 +320,10 @@ const KeyboardHandler = {
 
       // Shrink main content area so terminal doesn't extend behind keyboard.
       // Use stable keyboard height (not scroll-dependent) for padding.
+      // 84px = toolbar (40px) + accessory bar (44px).
       const keyboardHeight = this.initialViewportHeight - (window.visualViewport.height || window.innerHeight);
       if (main && keyboardHeight > 0) {
-        main.style.paddingBottom = `${keyboardHeight + 94}px`;
+        main.style.paddingBottom = `${keyboardHeight + 84}px`;
       }
     } else {
       this.resetLayout();
@@ -369,6 +370,11 @@ const KeyboardHandler = {
           try {
             app.fitAddon.fit();
           } catch {}
+        // Eliminate terminal row quantization gap: xterm can only show whole
+        // rows, so leftover pixels create dead space below the last row.
+        // Shrink .main's paddingBottom by the gap so the terminal fills flush
+        // to the accessory bar.
+        this._shrinkPaddingToFit();
         app.terminal.scrollToBottom();
         // Send resize to server so PTY dimensions match xterm
         this._sendTerminalResize();
@@ -420,6 +426,31 @@ const KeyboardHandler = {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ cols, rows }),
         }).catch(() => {});
+      }
+    } catch {}
+  },
+
+  /**
+   * Shrink .main paddingBottom to eliminate the terminal row quantization gap.
+   * xterm can only render whole rows, so fractional-row pixels create dead
+   * space below the last row. After fitAddon.fit(), measure the gap and
+   * reduce padding by that amount so the terminal sits flush against the bars.
+   */
+  _shrinkPaddingToFit() {
+    try {
+      const container = document.getElementById('terminalContainer');
+      const main = document.querySelector('.main');
+      if (!container || !main || typeof app === 'undefined' || !app.terminal) return;
+      const cellH = app.terminal._core?._renderService?.dimensions?.css?.cell?.height;
+      if (!cellH) return;
+      const gap = container.clientHeight - app.terminal.rows * cellH;
+      if (gap > 0 && gap < cellH) {
+        const currentPadding = parseInt(main.style.paddingBottom) || 0;
+        main.style.paddingBottom = currentPadding + gap + 'px';
+        if (app.fitAddon)
+          try {
+            app.fitAddon.fit();
+          } catch {}
       }
     } catch {}
   },

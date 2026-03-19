@@ -327,13 +327,25 @@ html.mobile-init .file-browser-panel {
     max-height: calc(36px + var(--safe-area-top));
   }
 
-  /* Add top margin to main content to account for fixed header */
+  /* Add top margin to main content to account for fixed header,
+     and bottom padding for the fixed toolbar (40px) so terminal
+     content doesn't extend behind it. JS overrides paddingBottom
+     when keyboard is visible, and resetLayout() clears the inline
+     style to re-expose this CSS value. */
   .main {
     margin-top: 42px;
+    padding-bottom: calc(40px + var(--safe-area-bottom));
   }
 
   .ios-device .main {
     margin-top: calc(42px + var(--safe-area-top));
+  }
+
+  /* iOS Safari: toolbar is pushed up by (100vh - --app-height) to clear the
+     browser's bottom bar. Match that offset in main's padding so the terminal
+     doesn't extend behind the toolbar. */
+  .ios-device.safari-browser .main {
+    padding-bottom: calc(40px + var(--safe-area-bottom) + (100vh - var(--app-height, 100vh)));
   }
 
   .header-right {
@@ -1586,11 +1598,9 @@ html.mobile-init .file-browser-panel {
     scroll-margin-top: 80px;
   }
 
-  /* When keyboard is visible, adjust content to account for moved toolbar */
-  .keyboard-visible .terminal-container {
-    /* Reduce terminal height when keyboard is up so it doesn't overlap toolbar */
-    padding-bottom: 50px;
-  }
+  /* When keyboard is visible, the JS paddingBottom on .main already reserves
+     space for toolbar + accessory bar. No extra padding needed here — it was
+     double-counting and creating dead space between terminal and the bars. */
 
   /* Ensure modals scroll properly when keyboard is visible */
   .keyboard-visible .modal-body {
