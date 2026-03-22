@@ -219,6 +219,9 @@ Object.assign(CodemanApp.prototype, {
     // Welcome message
     this.showWelcome();
 
+    // Generation counter for chunkedTerminalWrite — aborts stale writes on tab switch
+    this._chunkedWriteGen = 0;
+
     // Handle resize with throttling for performance
     this._resizeTimeout = null;
     this._lastResizeDims = null;
@@ -1033,6 +1036,10 @@ Object.assign(CodemanApp.prototype, {
    * @returns {Promise<void>} - Resolves when all chunks written
    */
   chunkedTerminalWrite(buffer, chunkSize = TERMINAL_CHUNK_SIZE) {
+    // Generation counter: if a newer chunkedTerminalWrite starts (tab switch),
+    // older writes abort instead of continuing to push stale data into the terminal.
+    const writeGen = ++this._chunkedWriteGen;
+
     return new Promise((resolve) => {
       if (!buffer || buffer.length === 0) {
         this._finishBufferLoad();
@@ -1049,7 +1056,10 @@ Object.assign(CodemanApp.prototype, {
       const cleanBuffer = buffer.replace(DEC_SYNC_STRIP_RE, '');
 
       const finish = () => {
-        this._finishBufferLoad();
+        // Only finish if we're still the active write — a newer write owns buffer load state
+        if (this._chunkedWriteGen === writeGen) {
+          this._finishBufferLoad();
+        }
         resolve();
       };
 
@@ -1067,6 +1077,12 @@ Object.assign(CodemanApp.prototype, {
       const _chunkStart = performance.now();
       let _chunkCount = 0;
       const writeChunk = () => {
+        // Abort if a newer chunked write started (user switched tabs)
+        if (this._chunkedWriteGen !== writeGen) {
+          resolve();
+          return;
+        }
+
         if (offset >= cleanBuffer.length) {
           const _totalMs = performance.now() - _chunkStart;
           console.log(`[CRASH-DIAG] chunkedTerminalWrite complete: ${cleanBuffer.length} bytes in ${_chunkCount} chunks, ${_totalMs.toFixed(0)}ms total`);
@@ -1240,6 +1256,9 @@ Object.assign(CodemanApp.prototype, {
    * @returns {Promise<void>}
    */
   async sendResize(sessionId) {
+    // Fit terminal to container before reading dimensions — ensures local
+    // terminal size matches what we report to the server PTY.
+    if (this.fitAddon) this.fitAddon.fit();
     const dims = this.getTerminalDimensions();
     if (!dims) return;
     // Fast path: WebSocket resize

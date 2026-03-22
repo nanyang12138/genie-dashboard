@@ -1362,6 +1362,8 @@ class CodemanApp {
     this.writeFrameScheduled = false;
     this._isLoadingBuffer = false;
     this._loadBufferQueue = null;
+    // Abort any in-flight chunkedTerminalWrite (SSE reconnect reloads buffers)
+    this._chunkedWriteGen = (this._chunkedWriteGen || 0) + 1;
     // Preserve local echo overlay text across SSE reconnect — just hide until
     // terminal buffer reloads and prompt is visible again.  _render() re-scans
     // for the ❯ prompt on every call, so rerender() after buffer load repositions it.
@@ -2020,6 +2022,10 @@ class CodemanApp {
     this.writeFrameScheduled = false;
     this._isLoadingBuffer = false;
     this._loadBufferQueue = null;
+    // Abort any in-flight chunkedTerminalWrite from the previous session.
+    // Without this, old rAF-scheduled chunks continue writing stale data
+    // into the terminal, interleaving with the new session's buffer.
+    this._chunkedWriteGen = (this._chunkedWriteGen || 0) + 1;
     // End any in-flight IME composition.
     // iOS Safari keeps autocorrect composing; switching tabs without ending it
     // leaves xterm's _compositionHelper._isComposing stuck true, which blocks
@@ -2136,6 +2142,11 @@ class CodemanApp {
     this._isLoadingBuffer = true;
     this._loadBufferQueue = [];
     try {
+      // Fit terminal to container BEFORE writing any buffer data.
+      // If the browser was resized while viewing another session, the terminal
+      // canvas may be at stale dimensions — content would render at wrong width.
+      if (this.fitAddon) this.fitAddon.fit();
+
       // Instant cache restore — show previous buffer via chunked write to avoid WebGL GPU stalls.
       // Direct terminal.write() of large cached buffers (256KB+) can block the main thread
       // for 5+ seconds while the WebGL renderer processes ReadPixels synchronously.
