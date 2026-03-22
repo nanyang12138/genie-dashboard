@@ -984,14 +984,25 @@ export function registerSessionRoutes(
           if (textBlock) text = textBlock.text;
         }
         if (!text) continue;
-        // Strip XML-like system/command tags that Claude Code injects into transcripts
+        // Strip XML-like system/command tags and ANSI escapes from transcripts
         text = text
           .replace(/<[^>]+>/g, '')
+          .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
           .trim()
           .replace(/\s+/g, ' ');
         if (!text) continue;
-        // Skip system-injected messages and slash command artifacts (not real user prompts)
-        if (/^(Caveat:|init\b|clear\b|\/\w+ \w+$|You are a )/i.test(text)) continue;
+        // Skip system-injected messages, slash command artifacts, and expanded skill prompts
+        if (
+          /^(Caveat:|init\b|clear\b|resume\b|\/[a-z][\w-]*\b|You are a |\[Request |Set model to )/i.test(text) ||
+          /^(Please )?(analyze|review) this codebase/i.test(text) ||
+          /^(Read|Implement the following) .+, then (search|list|check) /i.test(text) ||
+          /^\d+ vulnerabilit/i.test(text) ||
+          /\btoolu_/.test(text) ||
+          /^[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]+/.test(text) ||
+          /\b(sk-ant-|ANTHROPIC_API_KEY|API_KEY=|SECRET|TOKEN=)/i.test(text) ||
+          text.length < 8
+        )
+          continue;
         return text.length > MAX_PROMPT_LEN ? text.slice(0, MAX_PROMPT_LEN) + '…' : text;
       } catch {
         // Malformed line — skip
@@ -1007,6 +1018,25 @@ export function registerSessionRoutes(
       const { bytesRead } = await fd.read(buf, 0, buf.length, 0);
       await fd.close();
       return buf.toString('utf8', 0, bytesRead);
+    } catch {
+      return null;
+    }
+  }
+
+  /** Read the last `buf.length` bytes of a file (for tail-scanning user prompts). */
+  async function readFileTail(path: string, buf: Buffer, fileSize: number): Promise<string | null> {
+    try {
+      const fd = await fs.open(path, 'r');
+      const offset = Math.max(0, fileSize - buf.length);
+      const { bytesRead } = await fd.read(buf, 0, buf.length, offset);
+      await fd.close();
+      const text = buf.toString('utf8', 0, bytesRead);
+      // Skip first partial line when we didn't read from the start
+      if (offset > 0) {
+        const nl = text.indexOf('\n');
+        return nl >= 0 ? text.slice(nl + 1) : null;
+      }
+      return text;
     } catch {
       return null;
     }
@@ -1073,6 +1103,14 @@ export function registerSessionRoutes(
             }
           }
           if (head) firstPrompt = extractFirstUserPrompt(head);
+
+          // If head scan found no usable prompt (e.g. session started with /init),
+          // try reading the tail for a recent user message.
+          if (!firstPrompt && fileStat.size > 65536) {
+            const tailBuf = Buffer.alloc(32768);
+            const tail = await readFileTail(filePath, tailBuf, fileStat.size);
+            if (tail) firstPrompt = extractFirstUserPrompt(tail);
+          }
 
           results.push({
             sessionId,
