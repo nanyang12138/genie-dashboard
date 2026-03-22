@@ -96,16 +96,8 @@ Object.assign(CodemanApp.prototype, {
     // Find which Codeman session owns this subagent (direct claudeSessionId match only)
     this.findParentSessionForSubagent(data.agentId);
 
-    // Auto-open window for new active agents — but ONLY if they belong to a Codeman session tab.
-    // Agents from external Claude sessions (not managed by Codeman) should not pop up.
-    if (data.status === 'active') {
-      const agentForCheck = this.subagents.get(data.agentId);
-      const hasMatchingTab = agentForCheck?.sessionId &&
-        Array.from(this.sessions.values()).some(s => s.claudeSessionId === agentForCheck.sessionId);
-      if (hasMatchingTab) {
-        this.openSubagentWindow(data.agentId);
-      }
-    }
+    // Subagent windows are no longer auto-opened on discovery.
+    // Users can open them manually from the monitor panel or via openAllActiveSubagentWindows().
 
     // Ensure connection lines are updated after window is created and DOM settles
     requestAnimationFrame(() => {
