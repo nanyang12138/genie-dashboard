@@ -1,5 +1,11 @@
 # aicodeman
 
+## 0.5.0
+
+### Minor Changes
+
+- Visual redesign with glass morphism, refined colors, and polished UI. Optimize history endpoint with buffer reuse and line iterator. Fix Ink frame search window (4KB→64KB) to prevent partial frames. Fix stale terminal data on tab switch via chunkedTerminalWrite cancellation. Improve history prompt extraction with expanded command filtering and tail scan fallback. Align case select group height to match dropdown. Fix no-control-regex lint error for ANSI strip pattern. Add browser-testing-guide to CLAUDE.md references.
+
 ## 0.4.7
 
 ### Patch Changes
