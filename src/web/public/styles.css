@@ -2850,7 +2850,7 @@ body {
 /* Case select group with + button */
 .case-select-group {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   position: relative;
 }
 
@@ -2888,7 +2888,6 @@ body {
   align-items: center;
   justify-content: center;
   width: 28px;
-  height: 28px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-left: none;
@@ -2912,7 +2911,6 @@ body {
   align-items: center;
   justify-content: center;
   width: 28px;
-  height: 28px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-left: none;
