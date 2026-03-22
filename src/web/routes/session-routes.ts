@@ -73,15 +73,28 @@ function stripInkRedrawBloat(buffer: string): string {
   // If the redraw section is small (<16KB), not worth stripping
   if (redrawPart.length < 16384) return buffer;
 
-  // Keep only the last 4KB of redraw frames — this preserves the final visual state
-  // (spinner position, status bar text, token count, etc.)
-  const tail = redrawPart.slice(-4096);
-  // Avoid starting mid-escape: find first complete frame boundary
-  // eslint-disable-next-line no-control-regex
-  const frameStart = tail.search(/\x1b\(B\x1b\[m|\x1b\[\d+d|\x1b\[\d+;\d+H/);
-  const cleanTail = frameStart > 0 ? tail.slice(frameStart) : tail;
+  // Find the last complete Ink frame by searching for where the VPA row
+  // number drops (cursor jumps back to viewport top for a new render cycle).
+  // Search the last 64KB — a single Ink frame with response content can be
+  // 10-20KB, so 4KB was too small and caused partial frames (blank gap).
+  const searchLen = Math.min(redrawPart.length, 65536);
+  const searchWindow = redrawPart.slice(-searchLen);
 
-  return contentPart + cleanTail;
+  // eslint-disable-next-line no-control-regex
+  const vpaRe = /\x1b\[(\d+)d/g;
+  let lastFrameStart = 0;
+  let prevRow = -1;
+  let match;
+  while ((match = vpaRe.exec(searchWindow)) !== null) {
+    const row = parseInt(match[1], 10);
+    // Row number dropped significantly — Ink started a new frame
+    if (prevRow > 0 && row < prevRow - 5) {
+      lastFrameStart = match.index;
+    }
+    prevRow = row;
+  }
+
+  return contentPart + searchWindow.slice(lastFrameStart);
 }
 
 export function registerSessionRoutes(
