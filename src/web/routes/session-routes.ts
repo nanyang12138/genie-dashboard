@@ -1000,7 +1000,7 @@ export function registerSessionRoutes(
         // Strip XML-like system/command tags and ANSI escapes from transcripts
         text = text
           .replace(/<[^>]+>/g, '')
-          .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
+          .replace(new RegExp(String.raw`\x1b\[[0-9;]*[a-zA-Z]`, 'g'), '')
           .trim()
           .replace(/\s+/g, ' ');
         if (!text) continue;
