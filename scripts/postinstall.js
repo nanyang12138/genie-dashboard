@@ -168,13 +168,28 @@ try {
 
 if (majorVersion >= 22) {
     try {
+        const projectRoot = join(import.meta.dirname, '..');
+        const py311 = '/usr/bin/python3.11';
+        const rebuildEnv = {
+            ...process.env,
+            npm_config_build_from_source: 'true',
+        };
+        if (existsSync(py311)) {
+            rebuildEnv.PYTHON = py311;
+        }
         console.log(colors.dim('  Rebuilding node-pty from source for Node.js 22+...'));
-        execSync('npm rebuild node-pty --build-from-source', { stdio: 'pipe', timeout: 120000 });
+        execSync('npm rebuild node-pty', {
+            stdio: 'pipe',
+            timeout: 120000,
+            cwd: projectRoot,
+            env: rebuildEnv,
+        });
         console.log(colors.green('✓ node-pty rebuilt from source'));
     } catch {
         hasWarnings = true;
         console.log(colors.yellow('⚠ Failed to rebuild node-pty from source'));
-        console.log(colors.dim('  You may need to run: npm rebuild node-pty --build-from-source'));
+        console.log(colors.dim('  Install a C++ compiler (e.g. RHEL: sudo dnf install gcc-c++), then run:'));
+        console.log(colors.cyan('    npm run rebuild:pty'));
     }
 }
 

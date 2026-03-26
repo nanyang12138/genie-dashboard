@@ -6,6 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 | Task | Command |
 |------|---------|
+| One-shot start (PATH/Python for node-pty) | `./start.sh` (prod: `./start.sh --prod`) |
 | Dev server | `npx tsx src/index.ts web` |
 | Type check | `tsc --noEmit` |
 | Lint | `npm run lint` (fix: `npm run lint:fix`) |
@@ -107,7 +108,7 @@ Codeman is a Claude Code session manager with web interface and autonomous Ralph
 | **AI** | `src/ai-checker-base.ts`, `src/ai-idle-checker.ts`, `src/ai-plan-checker.ts` | |
 | **Tasks** | `src/task.ts`, `src/task-queue.ts`, `src/task-tracker.ts` | |
 | **State** | `src/state-store.ts`, `src/run-summary.ts`, `src/session-lifecycle-log.ts` | |
-| **Infra** | `src/hooks-config.ts`, `src/push-store.ts`, `src/tunnel-manager.ts`, `src/image-watcher.ts`, `src/file-stream-manager.ts` | |
+| **Infra** | `src/hooks-config.ts`, `src/push-store.ts`, `src/image-watcher.ts`, `src/file-stream-manager.ts` | |
 | **Plan** | `src/plan-orchestrator.ts`, `src/prompts/*.ts`, `src/templates/claude-md.ts` | |
 | **Web** | `src/web/server.ts`, `src/web/sse-events.ts`, `src/web/routes/*.ts` (14 route modules + barrel), `src/web/route-helpers.ts`, `src/web/ports/*.ts`, `src/web/middleware/auth.ts`, `src/web/schemas.ts` | |
 | **Frontend** | `src/web/public/app.js` (~2.6K lines, core) + 5 infra modules (`constants.js`, `mobile-handlers.js`, `voice-input.js`, `notification-manager.js`, `keyboard-accessory.js`) + 7 domain modules (`terminal-ui.js`, `respawn-ui.js`, `ralph-panel.js`, `orchestrator-panel.js`, `settings-ui.js`, `panels-ui.js`, `session-ui.js`) + 4 feature modules (`ralph-wizard.js`, `api-client.js`, `subagent-windows.js`, `input-cjk.js`) + `sw.js` | |
@@ -157,9 +158,8 @@ Frontend JS modules have `@fileoverview` with `@dependency`/`@loadorder` tags. L
 | Layer | Details |
 |-------|---------|
 | **Auth** | Optional HTTP Basic via `CODEMAN_USERNAME`/`CODEMAN_PASSWORD` env vars |
-| **QR Auth** | Single-use 6-char tokens (60s TTL) for tunnel login. See `docs/qr-auth-plan.md` |
 | **Sessions** | 24h cookie (`codeman_session`), auto-extend, device context audit |
-| **Rate limit** | 10 failed auth/IP → 429 (15min decay). QR has separate limiter |
+| **Rate limit** | 10 failed auth/IP → 429 (15min decay) |
 | **Hook bypass** | `/api/hook-event` exempt from auth (localhost-only, schema-validated) |
 | **Env vars** | `CODEMAN_MUX` (managed session), `CODEMAN_API_URL` (auto-set for hooks) |
 | **Validation** | Zod schemas, path allowlist regex, `CLAUDE_CODE_*` env prefix allowlist |
@@ -226,11 +226,11 @@ Target: 20 sessions, 50 agent windows at 60fps. Limits in `src/config/`: termina
 
 ## References
 
-Deep-dive docs in `docs/`: `respawn-state-machine.md`, `ralph-wiggum-guide.md`, `claude-code-hooks-reference.md`, `terminal-anti-flicker.md`, `opencode-integration.md`, `qr-auth-plan.md`, `orchestrator-loop-architecture.md`, `browser-testing-guide.md`. Agent Teams: `agent-teams/README.md`. SSE events: `src/web/sse-events.ts` + `constants.js`.
+Deep-dive docs in `docs/`: `respawn-state-machine.md`, `ralph-wiggum-guide.md`, `claude-code-hooks-reference.md`, `terminal-anti-flicker.md`, `opencode-integration.md`, `orchestrator-loop-architecture.md`, `browser-testing-guide.md`. (Historical QR/tunnel design notes: `docs/qr-auth-plan.md` — not shipped in this fork.) Agent Teams: `agent-teams/README.md`. SSE events: `src/web/sse-events.ts` + `constants.js`.
 
 ## Scripts
 
-Key: `scripts/tmux-manager.sh` (safe tmux mgmt), `scripts/tunnel.sh` (tunnel start/stop/url). Production: `scripts/codeman-web.service`, `scripts/codeman-tunnel.service`.
+Key: `scripts/tmux-manager.sh` (safe tmux mgmt), `./start.sh` (one-shot dev/prod with PATH/Python for `node-pty`). Production: `scripts/codeman-web.service`.
 
 ## Memory Leak Prevention
 
@@ -241,6 +241,6 @@ Key: `scripts/tmux-manager.sh` (safe tmux mgmt), `scripts/tunnel.sh` (tunnel sta
 **Bug investigation**: Dev server → reproduce in browser → check terminal + `~/.codeman/state.json`.
 **Respawn changes**: Read `docs/respawn-state-machine.md` first. Use `MockSession` from `test/respawn-test-utils.ts`.
 
-## Tunnel
+## Local start (Genie Dashboard fork)
 
-`./scripts/tunnel.sh start|stop|url`. **Always set `CODEMAN_PASSWORD`** before exposing via tunnel.
+`./start.sh` — development (`tsx`) or `./start.sh --prod` after `npm run build`. Set **`CODEMAN_PASSWORD`** on shared networks. See the Quick Reference table at the top of this file for `dev` / `typecheck` / `lint`.

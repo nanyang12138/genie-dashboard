@@ -1,5 +1,9 @@
 # QR Code Authentication Plan
 
+> **Genie Dashboard fork:** Cloudflare Tunnel and QR-based login **are not implemented** in this repository. This document is **historical / reference only** (upstream design). For deployment, use HTTP Basic (`CODEMAN_USERNAME` / `CODEMAN_PASSWORD`) on your LAN or VPN.
+
+---
+
 > Ephemeral, single-use auth tokens embedded in the tunnel QR code — scan to auto-authenticate, while the bare tunnel URL stays password-protected.
 
 ## Problem

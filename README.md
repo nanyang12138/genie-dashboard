@@ -89,12 +89,12 @@ The most responsive AI coding agent experience on any phone. Full xterm.js termi
 
 <table>
 <tr>
-<td align="center" width="33%"><img src="docs/screenshots/mobile-landing-qr.png" alt="Mobile — landing page with QR auth" width="260"></td>
+<td align="center" width="33%"><img src="docs/screenshots/mobile-landing-qr.png" alt="Mobile — welcome / landing" width="260"></td>
 <td align="center" width="33%"><img src="docs/screenshots/mobile-session-idle.png" alt="Mobile — idle session with keyboard accessory" width="260"></td>
 <td align="center" width="33%"><img src="docs/screenshots/mobile-session-active.png" alt="Mobile — active agent session" width="260"></td>
 </tr>
 <tr>
-<td align="center"><em>Landing page with QR auth</em></td>
+<td align="center"><em>Welcome / session picker</em></td>
 <td align="center"><em>Keyboard accessory bar</em></td>
 <td align="center"><em>Agent working in real-time</em></td>
 </tr>
@@ -112,16 +112,12 @@ The most responsive AI coding agent experience on any phone. Full xterm.js termi
 <tr><td>Manual reconnect</td><td>tmux persistence</td></tr>
 <tr><td>No agent visibility</td><td>Background agents in real-time</td></tr>
 <tr><td>Copy-paste slash commands</td><td>One-tap <code>/init</code>, <code>/clear</code>, <code>/compact</code></td></tr>
-<tr><td>Password typing on phone</td><td><b>QR code scan — instant auth</b></td></tr>
+<tr><td>Password typing on phone</td><td><b>HTTP Basic + session cookie (optional)</b></td></tr>
 </table>
 
-### Secure QR Code Authentication
+### Authentication (internal / LAN)
 
-Typing passwords on a phone keyboard is miserable. Genie Dashboard replaces it with **cryptographically secure single-use QR tokens** — scan the code displayed on your desktop and your phone is authenticated instantly.
-
-Each QR encodes a URL containing a 6-character short code that maps to a 256-bit secret (`crypto.randomBytes(32)`) on the server. Tokens auto-rotate every **60 seconds**, are **atomically consumed on first scan** (replays always fail), and use **hash-based `Map.get()` lookup** that leaks nothing through response timing. The short code is an opaque pointer — the real secret never appears in browser history, `Referer` headers, or Cloudflare edge logs.
-
-The security design addresses all 6 critical QR auth flaws identified in ["Demystifying the (In)Security of QR Code-based Login"](https://www.usenix.org/conference/usenixsecurity25/presentation/zhang-xin) (USENIX Security 2025, which found 47 of the top-100 websites vulnerable): single-use enforcement, short TTL, cryptographic randomness, server-side generation, real-time desktop notification on scan (QRLjacking detection), and IP + User-Agent session binding with manual revocation. Dual-layer rate limiting (per-IP + global) makes brute force infeasible across 62^6 = 56.8 billion possible codes. Full security analysis: [`docs/qr-auth-plan.md`](docs/qr-auth-plan.md)
+This fork targets **intranet deployment**. Use **HTTP Basic** via `CODEMAN_USERNAME` / `CODEMAN_PASSWORD` when the UI must not be open to everyone on the network. After login, the server issues a `codeman_session` cookie (see Security in docs). **Cloudflare Tunnel and QR-based login are not included** in this tree; historical design notes remain in [`docs/qr-auth-plan.md`](docs/qr-auth-plan.md) for reference only.
 
 ### Touch-Optimized Interface
 
@@ -238,124 +234,9 @@ PTY Output → 16ms Server Batch → DEC 2026 Wrap → SSE → Client rAF → xt
 
 ---
 
-## Remote Access — Cloudflare Tunnel
+## Remote access (VPN / LAN)
 
-Access Genie Dashboard from your phone or any device outside your local network using a free [Cloudflare quick tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/) — no port forwarding, no DNS, no static IP required.
-
-```
-Browser (phone/tablet) → Cloudflare Edge (HTTPS) → cloudflared → localhost:3000
-```
-
-**Prerequisites:** Install [`cloudflared`](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) and set `CODEMAN_PASSWORD` in your environment.
-
-```bash
-# Quick start
-./scripts/tunnel.sh start      # Start tunnel, prints public URL
-./scripts/tunnel.sh url        # Show current URL
-./scripts/tunnel.sh stop       # Stop tunnel
-./scripts/tunnel.sh status     # Service status + URL
-```
-
-The script auto-installs a systemd user service on first run. The tunnel URL is a randomly generated `*.trycloudflare.com` address that changes each time the tunnel restarts.
-
-<details>
-<summary><strong>Persistent tunnel (survives reboots)</strong></summary>
-
-```bash
-# Enable as a persistent service
-systemctl --user enable codeman-tunnel
-loginctl enable-linger $USER
-
-# Or via the Genie Dashboard web UI: Settings → Tunnel → Toggle On
-```
-
-</details>
-
-<details>
-<summary><strong>Authentication</strong></summary>
-
-1. First request → browser shows Basic Auth prompt (username: `admin` or `CODEMAN_USERNAME`)
-2. On success → server issues a `codeman_session` cookie (24h TTL, auto-extends on activity)
-3. Subsequent requests authenticate silently via cookie
-4. 10 failed attempts per IP → 429 rate limit (15-minute decay)
-
-**Always set `CODEMAN_PASSWORD`** before exposing via tunnel — without it, anyone with the URL has full access to your sessions.
-
-</details>
-
-### QR Code Authentication
-
-Typing a password on a phone keyboard is terrible. Genie Dashboard solves this with **ephemeral single-use QR tokens** — scan the code on your desktop, and your phone is instantly authenticated. No password prompt, no typing, no clipboard.
-
-```
-Desktop displays QR  →  Phone scans  →  GET /q/Xk9mQ3  →  Server validates
-→  Token atomically consumed (single-use)  →  Session cookie issued  →  302 to /
-→  Desktop notified: "Device authenticated via QR"  →  New QR auto-generated
-```
-
-Someone who only has the bare tunnel URL (without the QR) still hits the standard password prompt. The QR is the fast path; the password is the fallback.
-
-#### How It Works
-
-The server maintains a rotating pool of short-lived, single-use tokens. Each token consists of a 256-bit secret (`crypto.randomBytes(32)`) paired with a 6-character base62 short code used as an opaque lookup key in the URL path. The QR code encodes a URL like `https://abc-xyz.trycloudflare.com/q/Xk9mQ3` — the short code is a pointer, not the secret itself, so it never leaks through browser history, `Referer` headers, or Cloudflare edge logs.
-
-Every **60 seconds**, the server automatically rotates to a fresh token. The previous token remains valid for a **90-second grace period** to handle the race where you scan right as rotation happens — after that, it's dead. Each token is **single-use**: the moment a phone successfully scans it, the token is atomically consumed and a new one is immediately generated for the desktop display.
-
-#### Security Design
-
-The design is informed by ["Demystifying the (In)Security of QR Code-based Login"](https://www.usenix.org/conference/usenixsecurity25/presentation/zhang-xin) (USENIX Security 2025), which found 47 of the top-100 websites vulnerable to QR auth attacks due to 6 critical design flaws across 42 CVEs. Genie Dashboard addresses all six:
-
-| USENIX Flaw | Mitigation |
-|-------------|------------|
-| **Flaw-1**: Missing single-use enforcement | Token atomically consumed on first scan — replays always fail |
-| **Flaw-2**: Long-lived tokens | 60s TTL with 90s grace, auto-rotation via timer |
-| **Flaw-3**: Predictable token generation | `crypto.randomBytes(32)` — 256-bit entropy. Short codes use rejection sampling to eliminate modulo bias |
-| **Flaw-4**: Client-side token generation | Server-side only — tokens never leave the server until embedded in the QR |
-| **Flaw-5**: Missing status notification | Desktop toast: *"Device [IP] authenticated via QR (Safari). Not you? [Revoke]"* — real-time QRLjacking detection |
-| **Flaw-6**: Inadequate session binding | IP + User-Agent stored for audit. Manual session revocation via API. HttpOnly + Secure + SameSite=lax cookies |
-
-#### Timing-Safe Lookup
-
-Short codes are stored in a `Map<shortCode, TokenRecord>`. Validation uses `Map.get()` — a hash-based O(1) lookup that reveals nothing about the target string through response timing. There is no character-by-character string comparison anywhere in the hot path, eliminating timing side-channel attacks entirely.
-
-#### Rate Limiting (Dual Layer)
-
-QR auth has its own rate limiting, completely independent from password auth:
-
-- **Per-IP**: 10 failed QR attempts per IP trigger a 429 block (15-minute decay window) — separate counter from Basic Auth failures, so a fat-fingered password doesn't burn your QR budget
-- **Global**: 30 QR attempts per minute across all IPs combined — defends against distributed brute force. With 62^6 = 56.8 billion possible short codes and only ~2 valid at any time, brute force is computationally infeasible regardless
-
-#### QR Code Size Optimization
-
-The URL is kept deliberately short (`/q/` path + 6-char code = ~53-56 total characters) to target **QR Version 4** (33x33 modules) instead of Version 5 (37x37). Smaller QR codes scan faster on budget phones — modern devices read Version 4 in 100-300ms. The `/q/` prefix saves 7 bytes compared to `/qr-auth/`, which alone is the difference between QR versions.
-
-#### Desktop Experience
-
-The QR display auto-refreshes every 60 seconds via SSE with the SVG embedded directly in the event payload (~2-5KB) — no extra HTTP fetch, sub-50ms refresh. A countdown timer shows time remaining. A "Regenerate" button instantly invalidates all existing tokens and creates a fresh one (useful if you suspect the QR was photographed).
-
-When someone authenticates via QR, the desktop shows a notification toast with the device's IP and browser — if it wasn't you, one click revokes all sessions.
-
-#### Threat Coverage
-
-| Threat | Why it doesn't work |
-|--------|-------------------|
-| **QR screenshot shared** | Single-use: consumed on first scan. 60s TTL: expired before the attacker can act. Desktop notification alerts you immediately. |
-| **Replay attack** | Atomic single-use consumption + 60s TTL. Old URLs always return 401. |
-| **Cloudflare edge logs** | Short code is an opaque 6-char lookup key, not the real 256-bit token. Single-use means replaying from logs always fails. |
-| **Brute force** | 56.8 billion combinations, ~2 valid at any time, dual-layer rate limiting blocks well before statistical feasibility. |
-| **QRLjacking** | 60s rotation forces real-time relay. Desktop toast provides instant detection. Self-hosted single-user context makes phishing implausible. |
-| **Timing attack** | Hash-based Map lookup — no string comparison timing leak. |
-| **Session cookie theft** | HttpOnly + Secure + SameSite=lax + 24h TTL. Manual revocation at `POST /api/auth/revoke`. |
-
-#### How It Compares
-
-| Platform | Model | Comparison |
-|----------|-------|------------|
-| **Discord** | Long-lived token, no confirmation, [repeatedly exploited](https://owasp.org/www-community/attacks/Qrljacking) | Genie Dashboard: single-use + TTL + notification |
-| **WhatsApp Web** | Phone confirms "Link device?", ~60s rotation | Comparable rotation; WhatsApp adds explicit confirmation (acceptable tradeoff for single-user) |
-| **Signal** | Ephemeral public key, E2E encrypted channel | Stronger crypto, but [exploited by Russian state actors in 2025](https://cloud.google.com/blog/topics/threat-intelligence/russia-targeting-signal-messenger) via social engineering despite it |
-
-> Full design rationale, security analysis, and implementation details: [`docs/qr-auth-plan.md`](docs/qr-auth-plan.md)
+Use **Tailscale**, **VPN**, or **SSH port forwarding** to reach the host from your phone. Start the server with `./start.sh` or `npm run dev` (see repo root). Set **`CODEMAN_PASSWORD`** (and optionally `CODEMAN_USERNAME`) so the web UI is not open without credentials on shared networks.
 
 ---
 

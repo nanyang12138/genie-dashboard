@@ -26,8 +26,8 @@ import { execSync, exec } from 'node:child_process';
 import { promisify } from 'node:util';
 
 const execAsync = promisify(exec);
-import { existsSync, readFileSync, mkdirSync } from 'node:fs';
-import { writeFile, rename } from 'node:fs/promises';
+import { existsSync, readFileSync } from 'node:fs';
+import { mkdir, writeFile, rename } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 import {
@@ -348,27 +348,35 @@ export class TmuxManager extends EventEmitter implements TerminalMultiplexer {
   /**
    * Save sessions to disk asynchronously. (NEVER writes in test mode)
    * Uses atomic temp+rename to prevent corruption on crash.
+   * mkdir → write → rename in one async chain; one retry on failure (NFS / startup races).
    */
   private saveSessions(): void {
     if (IS_TEST_MODE) return;
 
-    try {
-      const dir = dirname(MUX_SESSIONS_FILE);
-      if (!existsSync(dir)) {
-        mkdirSync(dir, { recursive: true });
-      }
-      const data = Array.from(this.sessions.values());
-      const json = JSON.stringify(data, null, 2);
+    const dir = dirname(MUX_SESSIONS_FILE);
+    const tempPath = MUX_SESSIONS_FILE + '.tmp';
+    const data = Array.from(this.sessions.values());
+    const json = JSON.stringify(data, null, 2);
 
-      const tempPath = MUX_SESSIONS_FILE + '.tmp';
-      writeFile(tempPath, json, 'utf-8')
-        .then(() => rename(tempPath, MUX_SESSIONS_FILE))
-        .catch((err) => {
-          console.error('[TmuxManager] Failed to save sessions:', err);
-        });
-    } catch (err) {
-      console.error('[TmuxManager] Failed to save sessions:', err);
-    }
+    const persistOnce = async (): Promise<void> => {
+      await mkdir(dir, { recursive: true });
+      await writeFile(tempPath, json, 'utf-8');
+      await rename(tempPath, MUX_SESSIONS_FILE);
+    };
+
+    void (async () => {
+      try {
+        await persistOnce();
+      } catch (err) {
+        console.error('[TmuxManager] Failed to save sessions:', err);
+        try {
+          await new Promise((r) => setTimeout(r, 50));
+          await persistOnce();
+        } catch (err2) {
+          console.error('[TmuxManager] Failed to save sessions (retry):', err2);
+        }
+      }
+    })();
   }
 
   /**

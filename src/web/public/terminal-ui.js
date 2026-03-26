@@ -663,12 +663,6 @@ Object.assign(CodemanApp.prototype, {
     if (overlay) {
       overlay.classList.remove('visible');
     }
-    // Collapse expanded QR when leaving welcome screen
-    const qrWrap = document.getElementById('welcomeQr');
-    if (qrWrap) {
-      clearTimeout(this._welcomeQrShrinkTimer);
-      qrWrap.classList.remove('expanded');
-    }
   },
 
   /**
