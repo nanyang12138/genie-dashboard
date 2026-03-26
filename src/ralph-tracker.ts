@@ -244,6 +244,7 @@ const TODO_EXCLUDE_PATTERNS = [
   /^(?:Bash|Search|Read|Write|Glob|Grep|Edit|Task)\s*\(/i, // Tool invocations
   /^(?:I'll |Let me |Now I|First,|Task \d+:|Result:|Error:)/i, // Claude commentary
   /^\S+\([^)]+\)$/, // Generic function call pattern
+  /^(?:low|medium|high)\s+[·•]\s+\/effort\b/i, // Claude UI effort indicator
 ];
 
 // ---------- Loop Status Patterns ----------

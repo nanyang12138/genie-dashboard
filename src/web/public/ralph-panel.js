@@ -14,7 +14,10 @@ Object.assign(CodemanApp.prototype, {
   _onRalphLoopUpdate(data) {
     // Skip if user explicitly closed this session's Ralph panel
     if (this.ralphClosedSessions.has(data.sessionId)) return;
-    this.updateRalphState(data.sessionId, { loop: data.state });
+    this.updateRalphState(data.sessionId, {
+      loop: data.state,
+      ...(data.state?.active ? { completionDetectedPhrase: null, exitGateMet: false } : {})
+    });
   },
 
   _onRalphTodoUpdate(data) {
@@ -42,6 +45,7 @@ Object.assign(CodemanApp.prototype, {
     const existing = this.ralphStates.get(data.sessionId) || {};
     if (existing.loop) {
       existing.loop.active = false;
+      existing.completionDetectedPhrase = data.phrase || 'unknown';
       this.updateRalphState(data.sessionId, existing);
     }
 
@@ -81,6 +85,9 @@ Object.assign(CodemanApp.prototype, {
   },
 
   _onExitGateMet(data) {
+    if (!this.ralphClosedSessions.has(data.sessionId)) {
+      this.updateRalphState(data.sessionId, { exitGateMet: true });
+    }
     const session = this.sessions.get(data.sessionId);
     this.notificationManager?.notify({
       urgency: 'warning',
@@ -513,7 +520,7 @@ Object.assign(CodemanApp.prototype, {
     this.updateRalphRing(percent);
 
     // Update status badge (pass completion info)
-    this.updateRalphStatus(state?.loop, completed, total);
+    this.updateRalphStatus(state, completed, total);
 
     // Update stats
     this.updateRalphStats(state?.loop, completed, total);
@@ -565,18 +572,23 @@ Object.assign(CodemanApp.prototype, {
     }
   },
 
-  updateRalphStatus(loop, completed = 0, total = 0) {
+  updateRalphStatus(state, completed = 0, total = 0) {
     const badge = this.$('ralphStatusBadge');
     const statusText = badge?.querySelector('.ralph-status-text');
     if (!badge || !statusText) return;
+
+    const loop = state?.loop;
+    const hasExplicitCompletion =
+      Boolean(state?.completionDetectedPhrase) ||
+      state?.exitGateMet === true ||
+      state?.statusBlock?.status === 'COMPLETE';
 
     badge.classList.remove('active', 'completed', 'tracking');
 
     if (loop?.active) {
       badge.classList.add('active');
       statusText.textContent = 'Running';
-    } else if (total > 0 && completed === total) {
-      // Only show "Complete" when all todos are actually done
+    } else if (hasExplicitCompletion) {
       badge.classList.add('completed');
       statusText.textContent = 'Complete';
     } else if (loop?.enabled || total > 0) {

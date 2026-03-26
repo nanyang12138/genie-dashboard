@@ -377,6 +377,12 @@ describe('RalphTracker', () => {
       expect(todos[0].status).toBe('in_progress');
     });
 
+    it('should ignore Claude effort indicator rows', () => {
+      tracker.processTerminalData('◐ medium · /effort\n');
+
+      expect(tracker.todos).toHaveLength(0);
+    });
+
     it('should handle multiple native todos in sequence', () => {
       tracker.processTerminalData('⎿  ☐ First task\n');
       tracker.processTerminalData('   ☐ Second task\n');

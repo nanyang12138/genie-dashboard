@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/codeman-title.svg" alt="Codeman" height="60">
+  <img src="docs/images/codeman-title.svg" alt="Genie Dashboard" height="60">
 </p>
 
 <h2 align="center">The missing control plane for AI coding agents</h2>
@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/subagent-demo.gif" alt="Codeman — parallel subagent visualization" width="900">
+  <img src="docs/images/subagent-demo.gif" alt="Genie Dashboard — parallel subagent visualization" width="900">
 </p>
 
 ---
@@ -25,15 +25,15 @@
 ## Quick Start - Installation
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Ark0N/Codeman/master/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/nanyang12138/genie-dashboard/main/install.sh | bash
 ```
 
-This installs Node.js and tmux if missing, clones Codeman to `~/.codeman/app`, and builds it.
+This installs Node.js and tmux if missing, clones Genie Dashboard to `~/.codeman/app`, and builds it.
 
 **Install from a fork or specific branch:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/<user>/Codeman/<branch>/install.sh | \
-  CODEMAN_REPO_URL=https://github.com/<user>/Codeman.git \
+curl -fsSL https://raw.githubusercontent.com/<user>/genie-dashboard/<branch>/install.sh | \
+  CODEMAN_REPO_URL=https://github.com/<user>/genie-dashboard.git \
   CODEMAN_BRANCH=<branch> bash
 ```
 
@@ -41,7 +41,7 @@ The installer supports these environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CODEMAN_REPO_URL` | upstream Codeman | Custom git repository URL |
+| `CODEMAN_REPO_URL` | upstream Genie Dashboard repo | Custom git repository URL |
 | `CODEMAN_BRANCH` | `master` | Git branch to install |
 | `CODEMAN_INSTALL_DIR` | `~/.codeman/app` | Custom install directory |
 | `CODEMAN_SKIP_SYSTEMD` | `0` | Skip systemd service setup prompt |
@@ -55,12 +55,14 @@ codeman web
 # Open http://localhost:3000 — press Ctrl+Enter to start your first session
 ```
 
+> The product and repository are now **Genie Dashboard**, but the current CLI command and compatibility env vars still use `codeman` / `CODEMAN_*`.
+
 <details>
 <summary><strong>Run as a background service</strong></summary>
 
 **Linux (systemd):**
 ```bash
-mkdir -p ~/.config/systemd/user && printf '[Unit]\nDescription=Codeman Web Server\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=%s %s/dist/index.js web\nRestart=always\nRestartSec=10\n\n[Install]\nWantedBy=default.target\n' "$(which node)" "$HOME/.codeman/app" > ~/.config/systemd/user/codeman-web.service && systemctl --user daemon-reload && systemctl --user enable --now codeman-web && loginctl enable-linger $USER
+mkdir -p ~/.config/systemd/user && printf '[Unit]\nDescription=Genie Dashboard Web Server\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=%s %s/dist/index.js web\nRestart=always\nRestartSec=10\n\n[Install]\nWantedBy=default.target\n' "$(which node)" "$HOME/.codeman/app" > ~/.config/systemd/user/codeman-web.service && systemctl --user daemon-reload && systemctl --user enable --now codeman-web && loginctl enable-linger $USER
 ```
 
 **macOS (launchd):**
@@ -73,10 +75,10 @@ mkdir -p ~/Library/LaunchAgents && printf '<?xml version="1.0" encoding="UTF-8"?
 <summary><strong>Windows (WSL)</strong></summary>
 
 ```powershell
-wsl bash -c "curl -fsSL https://raw.githubusercontent.com/Ark0N/Codeman/master/install.sh | bash"
+wsl bash -c "curl -fsSL https://raw.githubusercontent.com/nanyang12138/genie-dashboard/main/install.sh | bash"
 ```
 
-Codeman requires tmux, so Windows users need [WSL](https://learn.microsoft.com/en-us/windows/wsl/install). If you don't have WSL yet: run `wsl --install` in an admin PowerShell, reboot, open Ubuntu, then install your preferred AI coding CLI inside WSL ([Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [OpenCode](https://opencode.ai)). After installing, `http://localhost:3000` is accessible from your Windows browser.
+Genie Dashboard requires tmux, so Windows users need [WSL](https://learn.microsoft.com/en-us/windows/wsl/install). If you don't have WSL yet: run `wsl --install` in an admin PowerShell, reboot, open Ubuntu, then install your preferred AI coding CLI inside WSL ([Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [OpenCode](https://opencode.ai)). After installing, `http://localhost:3000` is accessible from your Windows browser.
 </details>
 
 ---
@@ -101,7 +103,7 @@ The most responsive AI coding agent experience on any phone. Full xterm.js termi
 <table>
 <tr>
 <th>Terminal Apps</th>
-<th>Codeman Mobile</th>
+<th>Genie Dashboard Mobile</th>
 </tr>
 <tr><td>200-300ms input lag over remote</td><td><b>Local echo — instant feedback</b></td></tr>
 <tr><td>Tiny text, no context</td><td>Full xterm.js terminal</td></tr>
@@ -115,7 +117,7 @@ The most responsive AI coding agent experience on any phone. Full xterm.js termi
 
 ### Secure QR Code Authentication
 
-Typing passwords on a phone keyboard is miserable. Codeman replaces it with **cryptographically secure single-use QR tokens** — scan the code displayed on your desktop and your phone is authenticated instantly.
+Typing passwords on a phone keyboard is miserable. Genie Dashboard replaces it with **cryptographically secure single-use QR tokens** — scan the code displayed on your desktop and your phone is authenticated instantly.
 
 Each QR encodes a URL containing a 6-character short code that maps to a 256-bit secret (`crypto.randomBytes(32)`) on the server. Tokens auto-rotate every **60 seconds**, are **atomically consumed on first scan** (replays always fail), and use **hash-based `Map.get()` lookup** that leaks nothing through response timing. The short code is an opaque pointer — the real secret never appears in browser history, `Referer` headers, or Cloudflare edge logs.
 
@@ -142,7 +144,7 @@ codeman web --https
 
 ## Live Agent Visualization
 
-Watch background agents work in real-time. Codeman monitors agent activity and displays each agent in a draggable floating window with animated Matrix-style connection lines back to the parent session.
+Watch background agents work in real-time. Genie Dashboard monitors agent activity and displays each agent in a draggable floating window with animated Matrix-style connection lines back to the parent session.
 
 <p align="center">
   <img src="docs/images/subagent-spawn.png" alt="Subagent Visualization" width="900">
@@ -162,7 +164,7 @@ Watch background agents work in real-time. Codeman monitors agent activity and d
   <img src="docs/images/zerolag-demo.gif" alt="Zerolag Demo — local echo vs server echo side-by-side" width="900">
 </p>
 
-When accessing your coding agent remotely (VPN, Tailscale, SSH tunnel), every keystroke normally takes 200-300ms to round-trip. Codeman implements a **Mosh-inspired local echo system** that makes typing feel instant regardless of latency.
+When accessing your coding agent remotely (VPN, Tailscale, SSH tunnel), every keystroke normally takes 200-300ms to round-trip. Genie Dashboard implements a **Mosh-inspired local echo system** that makes typing feel instant regardless of latency.
 
 A pixel-perfect DOM overlay inside xterm.js renders keystrokes at 0ms. Background forwarding silently sends every character to the PTY in 50ms debounced batches, so Tab completion, `Ctrl+R` history search, and all shell features work normally. When the server echo arrives 200-300ms later, the overlay seamlessly disappears and the real terminal text takes over — the transition is invisible.
 
@@ -228,7 +230,7 @@ Click the chart icon on any session tab to see a timeline of everything that hap
 
 ### Zero-Flicker Terminal
 
-Terminal-based AI agents (Claude Code's Ink, OpenCode's Bubble Tea) redraw the screen on every state change. Codeman implements a 6-layer anti-flicker pipeline for smooth 60fps output across all sessions:
+Terminal-based AI agents (Claude Code's Ink, OpenCode's Bubble Tea) redraw the screen on every state change. Genie Dashboard implements a 6-layer anti-flicker pipeline for smooth 60fps output across all sessions:
 
 ```
 PTY Output → 16ms Server Batch → DEC 2026 Wrap → SSE → Client rAF → xterm.js (60fps)
@@ -238,7 +240,7 @@ PTY Output → 16ms Server Batch → DEC 2026 Wrap → SSE → Client rAF → xt
 
 ## Remote Access — Cloudflare Tunnel
 
-Access Codeman from your phone or any device outside your local network using a free [Cloudflare quick tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/) — no port forwarding, no DNS, no static IP required.
+Access Genie Dashboard from your phone or any device outside your local network using a free [Cloudflare quick tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/) — no port forwarding, no DNS, no static IP required.
 
 ```
 Browser (phone/tablet) → Cloudflare Edge (HTTPS) → cloudflared → localhost:3000
@@ -264,7 +266,7 @@ The script auto-installs a systemd user service on first run. The tunnel URL is 
 systemctl --user enable codeman-tunnel
 loginctl enable-linger $USER
 
-# Or via the Codeman web UI: Settings → Tunnel → Toggle On
+# Or via the Genie Dashboard web UI: Settings → Tunnel → Toggle On
 ```
 
 </details>
@@ -283,7 +285,7 @@ loginctl enable-linger $USER
 
 ### QR Code Authentication
 
-Typing a password on a phone keyboard is terrible. Codeman solves this with **ephemeral single-use QR tokens** — scan the code on your desktop, and your phone is instantly authenticated. No password prompt, no typing, no clipboard.
+Typing a password on a phone keyboard is terrible. Genie Dashboard solves this with **ephemeral single-use QR tokens** — scan the code on your desktop, and your phone is instantly authenticated. No password prompt, no typing, no clipboard.
 
 ```
 Desktop displays QR  →  Phone scans  →  GET /q/Xk9mQ3  →  Server validates
@@ -301,7 +303,7 @@ Every **60 seconds**, the server automatically rotates to a fresh token. The pre
 
 #### Security Design
 
-The design is informed by ["Demystifying the (In)Security of QR Code-based Login"](https://www.usenix.org/conference/usenixsecurity25/presentation/zhang-xin) (USENIX Security 2025), which found 47 of the top-100 websites vulnerable to QR auth attacks due to 6 critical design flaws across 42 CVEs. Codeman addresses all six:
+The design is informed by ["Demystifying the (In)Security of QR Code-based Login"](https://www.usenix.org/conference/usenixsecurity25/presentation/zhang-xin) (USENIX Security 2025), which found 47 of the top-100 websites vulnerable to QR auth attacks due to 6 critical design flaws across 42 CVEs. Genie Dashboard addresses all six:
 
 | USENIX Flaw | Mitigation |
 |-------------|------------|
@@ -349,7 +351,7 @@ When someone authenticates via QR, the desktop shows a notification toast with t
 
 | Platform | Model | Comparison |
 |----------|-------|------------|
-| **Discord** | Long-lived token, no confirmation, [repeatedly exploited](https://owasp.org/www-community/attacks/Qrljacking) | Codeman: single-use + TTL + notification |
+| **Discord** | Long-lived token, no confirmation, [repeatedly exploited](https://owasp.org/www-community/attacks/Qrljacking) | Genie Dashboard: single-use + TTL + notification |
 | **WhatsApp Web** | Phone confirms "Link device?", ~60s rotation | Comparable rotation; WhatsApp adds explicit confirmation (acceptable tradeoff for single-user) |
 | **Signal** | Ephemeral public key, E2E encrypted channel | Stronger crypto, but [exploited by Russian state actors in 2025](https://cloud.google.com/blog/topics/threat-intelligence/russia-targeting-signal-messenger) via social engineering despite it |
 
@@ -431,7 +433,7 @@ Single-digit selection (1-9), color-coded status, token counts, auto-refresh. De
 
 ```mermaid
 flowchart TB
-    subgraph Codeman["CODEMAN"]
+    subgraph GenieDashboard["GENIE DASHBOARD"]
         subgraph Frontend["Frontend Layer"]
             UI["Web UI<br/><small>xterm.js + Agent Windows</small>"]
             API["REST API<br/><small>Fastify</small>"]
