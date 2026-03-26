@@ -1,6 +1,6 @@
 /**
  * @fileoverview Auth port — capabilities for authentication state.
- * Route modules that need access to auth sessions or QR rate limiting depend on this port.
+ * Route modules that need access to auth sessions depend on this port.
  */
 
 import type { StaleExpirationMap } from '../../utils/index.js';
@@ -15,6 +15,5 @@ export interface AuthSessionRecord {
 
 export interface AuthPort {
   readonly authSessions: StaleExpirationMap<string, AuthSessionRecord> | null;
-  readonly qrAuthFailures: StaleExpirationMap<string, number> | null;
   readonly https: boolean;
 }

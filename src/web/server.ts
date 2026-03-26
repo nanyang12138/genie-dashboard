@@ -8,7 +8,7 @@
  * - 60fps terminal streaming via batched PTY output (16-50ms adaptive)
  *
  * Coordinates: SessionManager, RespawnController, SubagentWatcher, TeamWatcher,
- * TranscriptWatcher, ImageWatcher, TunnelManager, PushSubscriptionStore,
+ * TranscriptWatcher, ImageWatcher, PushSubscriptionStore,
  * PlanOrchestrator, RunSummaryTracker, FileStreamManager.
  *
  * Key exports:
@@ -20,7 +20,7 @@
  * (see `src/web/ports/` for definitions)
  *
  * @dependencies All major subsystems (session, respawn-controller, subagent-watcher,
- *   team-watcher, tunnel-manager, state-store, etc.)
+ *   team-watcher, state-store, etc.)
  * @consumedby src/index.ts (entry point), src/cli.ts
  * @emits SSE events via broadcast() — see sse-events.ts for full registry
  *
@@ -65,7 +65,6 @@ import {
 import { imageWatcher } from '../image-watcher.js';
 import { TranscriptWatcher } from '../transcript-watcher.js';
 import { TeamWatcher } from '../team-watcher.js';
-import { TunnelManager } from '../tunnel-manager.js';
 import { v4 as uuidv4 } from 'uuid';
 import { createRequire } from 'node:module';
 import { RunSummaryTracker } from '../run-summary.js';
@@ -119,19 +118,12 @@ import {
   SCHEDULED_CLEANUP_INTERVAL,
   SCHEDULED_RUN_MAX_AGE,
   SSE_HEARTBEAT_INTERVAL,
-  SSE_PADDING_SIZE,
   SESSION_LIMIT_WAIT_MS,
   ITERATION_PAUSE_MS,
   BATCH_FLUSH_THRESHOLD,
   STATS_COLLECTION_INTERVAL_MS,
   INACTIVITY_TIMEOUT_MS,
 } from '../config/server-timing.js';
-
-// SSE padding for Cloudflare tunnel buffer flushing.
-// Cloudflare quick tunnels buffer small SSE responses, causing lag for real-time events.
-// Appending SSE comment padding (ignored by EventSource) forces the proxy to flush.
-// Pre-computed once at startup to avoid repeated string allocation.
-const SSE_PADDING = ':' + 'p'.repeat(SSE_PADDING_SIZE) + '\n';
 
 /**
  * Get or generate a self-signed TLS certificate for HTTPS.
@@ -214,8 +206,6 @@ export class WebServer extends EventEmitter {
    * or `null` meaning "receive all events" (backwards-compatible default).
    */
   private sseClients: Map<FastifyReply, Set<string> | null> = new Map();
-  /** SSE clients connecting from non-localhost (i.e. through tunnel) */
-  private remoteSseClients: Set<FastifyReply> = new Set();
   /** Clients with backpressure — skip writes until 'drain' fires */
   private backpressuredClients: Set<FastifyReply> = new Set();
   private store = getStore();
@@ -274,12 +264,8 @@ export class WebServer extends EventEmitter {
     detected: (event: ImageDetectedEvent) => void;
     error: (error: Error, sessionId?: string) => void;
   } | null = null;
-  private tunnelManager: TunnelManager = new TunnelManager();
-  /** Cached tunnel active state — updated on TunnelStarted/TunnelStopped to avoid getUrl() on every broadcast */
-  private _isTunnelActive: boolean = false;
   private authSessions: StaleExpirationMap<string, import('./ports/auth-port.js').AuthSessionRecord> | null = null;
   private authFailures: StaleExpirationMap<string, number> | null = null;
-  private qrAuthFailures: StaleExpirationMap<string, number> | null = null;
   private pushStore: PushSubscriptionStore = new PushSubscriptionStore();
   private teamWatcher: TeamWatcher = new TeamWatcher();
   private _orchestratorLoop: import('../orchestrator-loop.js').OrchestratorLoop | null = null;
@@ -332,46 +318,6 @@ export class WebServer extends EventEmitter {
     // Set up team watcher listeners
     this.setupTeamWatcherListeners();
 
-    // Set up tunnel manager listeners
-    this.tunnelManager.on('started', (data: { url: string }) => {
-      this._isTunnelActive = true;
-      this.broadcast(SseEvent.TunnelStarted, data);
-    });
-    this.tunnelManager.on('stopped', () => {
-      this._isTunnelActive = false;
-      this.broadcast(SseEvent.TunnelStopped, {});
-    });
-    this.tunnelManager.on('error', (message: string) => {
-      this.broadcast(SseEvent.TunnelError, { message });
-    });
-    this.tunnelManager.on('progress', (data: { message: string }) => {
-      this.broadcast(SseEvent.TunnelProgress, data);
-    });
-
-    // QR token rotation — broadcast inline SVG for instant desktop refresh
-    this.tunnelManager.on('qrTokenRotated', async () => {
-      const url = this.tunnelManager.getUrl();
-      if (url && process.env.CODEMAN_PASSWORD) {
-        try {
-          const svg = await this.tunnelManager.getQrSvg(url);
-          this.broadcast(SseEvent.TunnelQrRotated, { svg });
-        } catch {
-          // QR generation failed — skip this rotation
-        }
-      }
-    });
-
-    this.tunnelManager.on('qrTokenRegenerated', async () => {
-      const url = this.tunnelManager.getUrl();
-      if (url && process.env.CODEMAN_PASSWORD) {
-        try {
-          const svg = await this.tunnelManager.getQrSvg(url);
-          this.broadcast(SseEvent.TunnelQrRegenerated, { svg });
-        } catch {
-          // QR generation failed — skip
-        }
-      }
-    });
   }
 
   /**
@@ -507,7 +453,7 @@ export class WebServer extends EventEmitter {
       batchTerminalData: this.batchTerminalData.bind(this),
       broadcastSessionStateDebounced: this.broadcastSessionStateDebounced.bind(this),
       batchTaskUpdate: this.batchTaskUpdate.bind(this),
-      getSseClientCount: () => this.remoteSseClients.size,
+      getSseClientCount: () => this.sseClients.size,
       // RespawnPort
       respawnControllers: this.respawnControllers,
       respawnTimers: this.respawnTimers,
@@ -535,13 +481,11 @@ export class WebServer extends EventEmitter {
       activePlanOrchestrators: this.activePlanOrchestrators,
       scheduledRuns: this.scheduledRuns,
       teamWatcher: this.teamWatcher,
-      tunnelManager: this.tunnelManager,
       pushStore: this.pushStore,
       startScheduledRun: this.startScheduledRun.bind(this),
       stopScheduledRun: this.stopScheduledRun.bind(this),
       // AuthPort
       authSessions: this.authSessions,
-      qrAuthFailures: this.qrAuthFailures,
       // OrchestratorPort — use getter so routes always see current value (not a null snapshot)
       get orchestratorLoop() {
         return self._orchestratorLoop;
@@ -572,7 +516,6 @@ export class WebServer extends EventEmitter {
     if (authState) {
       this.authSessions = authState.authSessions;
       this.authFailures = authState.authFailures;
-      this.qrAuthFailures = authState.qrAuthFailures;
     }
 
     // WebSocket support (terminal I/O — low-latency bidirectional channel)
@@ -639,29 +582,13 @@ export class WebServer extends EventEmitter {
 
       this.sseClients.set(reply, sessionFilter);
 
-      // Track tunnel clients — cloudflared proxies locally so req.ip is always
-      // 127.0.0.1; detect tunnel traffic via Cf-Connecting-Ip header instead.
-      if (req.headers['cf-connecting-ip']) {
-        this.remoteSseClients.add(reply);
-      }
-
       // Send initial state
       // Use light state for SSE init to avoid sending 2MB+ terminal buffers
       // Buffers are fetched on-demand when switching tabs
       this.sendSSE(reply, SseEvent.Init, this.getLightState());
-      // Flush Cloudflare tunnel buffer with padding — ensures the init event
-      // (and any immediately following events) are delivered without proxy delay.
-      if (this._isTunnelActive) {
-        try {
-          reply.raw.write(SSE_PADDING);
-        } catch {
-          /* client gone */
-        }
-      }
 
       req.raw.on('close', () => {
         this.sseClients.delete(reply);
-        this.remoteSseClients.delete(reply);
         this.backpressuredClients.delete(reply);
       });
     });
@@ -1976,7 +1903,6 @@ export class WebServer extends EventEmitter {
       reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     } catch {
       this.sseClients.delete(reply);
-      this.remoteSseClients.delete(reply);
     }
   }
 
@@ -1997,8 +1923,7 @@ export class WebServer extends EventEmitter {
           // Client may have missed terminal data during backpressure.
           // Tell it to reload the active session's buffer to recover.
           try {
-            const drainPadding = this._isTunnelActive ? SSE_PADDING : '';
-            reply.raw.write(`event: ${SseEvent.SessionNeedsRefresh}\ndata: {}\n\n${drainPadding}`);
+            reply.raw.write(`event: ${SseEvent.SessionNeedsRefresh}\ndata: {}\n\n`);
           } catch {
             /* client gone */
           }
@@ -2006,7 +1931,6 @@ export class WebServer extends EventEmitter {
       }
     } catch {
       this.sseClients.delete(reply);
-      this.remoteSseClients.delete(reply);
       this.backpressuredClients.delete(reply);
     }
   }
@@ -2024,16 +1948,9 @@ export class WebServer extends EventEmitter {
       this.cachedLightState = null;
       this.cachedSessionsList = null;
     }
-    // Performance optimization: serialize JSON once for all clients.
-    // Only append Cloudflare tunnel padding for latency-sensitive events —
-    // Recovery events need immediate proxy flush; low-frequency metadata events
-    // (session:created, ralph:*, respawn:*, etc.) don't need padding.
-    // Note: session:terminal has its own padding in flushSessionTerminalBatch().
-    const needsPadding = this._isTunnelActive && event === SseEvent.SessionNeedsRefresh;
-    const padding = needsPadding ? SSE_PADDING : '';
     let message: string;
     try {
-      message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n` + padding;
+      message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
     } catch (err) {
       // Handle circular references or non-serializable values
       console.error(`[Server] Failed to serialize SSE event "${event}":`, err);
@@ -2145,10 +2062,7 @@ export class WebServer extends EventEmitter {
       // Fast path: build SSE message directly without JSON.stringify on wrapper object.
       // Only the terminal data string needs escaping; sessionId is a UUID (safe to template).
       const escapedData = JSON.stringify(data);
-      // Append tunnel padding for immediate Cloudflare proxy flush —
-      // terminal data is high-frequency and latency-sensitive.
-      const padding = this._isTunnelActive ? SSE_PADDING : '';
-      const message = `event: session:terminal\ndata: {"id":"${sessionId}","data":${escapedData}}\n\n` + padding;
+      const message = `event: session:terminal\ndata: {"id":"${sessionId}","data":${escapedData}}\n\n`;
       for (const [client, filter] of this.sseClients) {
         // Skip clients that have a session filter and aren't subscribed to this session
         if (filter && !filter.has(sessionId)) continue;
@@ -2331,10 +2245,7 @@ export class WebServer extends EventEmitter {
         if (!socket || socket.destroyed || !socket.writable) {
           deadClients.push(client);
         } else {
-          // Send SSE comment as keep-alive. Only add padding when tunnel is
-          // active — it flushes Cloudflare proxy buffers but wastes bandwidth
-          // for direct/Tailscale connections.
-          const ka = this._isTunnelActive ? ':keepalive\n' + SSE_PADDING : ':keepalive\n\n';
+          const ka = ':keepalive\n\n';
           client.raw.write(ka);
         }
       } catch {
@@ -2346,7 +2257,6 @@ export class WebServer extends EventEmitter {
     // Remove dead clients
     for (const client of deadClients) {
       this.sseClients.delete(client);
-      this.remoteSseClients.delete(client);
       this.backpressuredClients.delete(client);
     }
 
@@ -2449,21 +2359,6 @@ export class WebServer extends EventEmitter {
       console.log('Image watcher disabled by user settings');
     }
 
-    // Tunnel only starts when user clicks the toggle in the UI — never on boot.
-    // Reset persisted tunnelEnabled so the UI toggle reflects actual state.
-    if (await this.isTunnelEnabled()) {
-      const settingsPath = join(homedir(), '.codeman', 'settings.json');
-      try {
-        const content = await fs.readFile(settingsPath, 'utf-8');
-        const settings = JSON.parse(content);
-        settings.tunnelEnabled = false;
-        await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2));
-      } catch {
-        /* ignore */
-      }
-      console.log('Cloudflare tunnel setting reset (tunnel only starts on explicit UI toggle)');
-    }
-
     // Start team watcher for agent team awareness (always on — lightweight polling)
     this.teamWatcher.start();
     console.log('Team watcher started - monitoring ~/.claude/teams/ for agent team activity');
@@ -2503,23 +2398,6 @@ export class WebServer extends EventEmitter {
       }
     }
     return false; // Default disabled (matches UI default)
-  }
-
-  /**
-   * Check if Cloudflare tunnel is enabled in settings (default: false)
-   */
-  private async isTunnelEnabled(): Promise<boolean> {
-    const settingsPath = join(homedir(), '.codeman', 'settings.json');
-    try {
-      const content = await fs.readFile(settingsPath, 'utf-8');
-      const settings = JSON.parse(content);
-      return settings.tunnelEnabled ?? false;
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-        console.error('Failed to read tunnel setting:', err);
-      }
-    }
-    return false;
   }
 
   private async restoreMuxSessions(): Promise<void> {
@@ -2742,7 +2620,6 @@ export class WebServer extends EventEmitter {
       }
     }
     this.sseClients.clear();
-    this.remoteSseClients.clear();
     this.backpressuredClients.clear();
 
     // Clear per-session batch timers
@@ -2856,10 +2733,6 @@ export class WebServer extends EventEmitter {
     // Stop team watcher
     this.teamWatcher.stop();
 
-    // Stop tunnel
-    this.tunnelManager.stop();
-    this.tunnelManager.removeAllListeners();
-
     // Destroy file stream manager (clears cleanup timer and kills remaining tail processes)
     fileStreamManager.destroy();
 
@@ -2893,10 +2766,6 @@ export class WebServer extends EventEmitter {
     if (this.authFailures) {
       this.authFailures.dispose();
       this.authFailures = null;
-    }
-    if (this.qrAuthFailures) {
-      this.qrAuthFailures.dispose();
-      this.qrAuthFailures = null;
     }
     this.activePlanOrchestrators.clear();
     this.cleaningUp.clear();

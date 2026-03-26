@@ -962,27 +962,6 @@
                 </label>
               </div>
 
-              <!-- Remote Access Section -->
-              <div class="settings-section-header">Remote Access</div>
-              <div class="settings-item" title="Expose Codeman via Cloudflare Tunnel for remote access">
-                <span class="settings-item-label">Cloudflare Tunnel</span>
-                <label class="switch switch-sm">
-                  <input type="checkbox" id="appSettingsTunnelEnabled">
-                  <span class="slider"></span>
-                </label>
-              </div>
-              <div class="settings-item" id="tunnelUrlRow" style="display:none">
-                <span class="settings-item-label">Tunnel URL</span>
-                <div style="display:flex; align-items:center; gap:8px">
-                  <span id="tunnelUrlDisplay" class="settings-item-value" style="cursor:pointer; text-decoration:underline; font-family:monospace; font-size:12px" title="Click to copy"></span>
-                  <button class="btn-icon-sm" id="tunnelQrBtn" onclick="app.showTunnelQR()" title="Show QR code" style="font-size:16px; padding:2px 6px; background:none; border:1px solid var(--border); border-radius:4px; cursor:pointer; color:var(--text-secondary)">⊞</button>
-                </div>
-              </div>
-              <div class="settings-item" id="tunnelUploadUrlRow" style="display:none">
-                <span class="settings-item-label">Upload URL</span>
-                <span id="tunnelUploadUrlDisplay" class="settings-item-value" style="cursor:pointer; text-decoration:underline; font-family:monospace; font-size:12px" title="Click to copy"></span>
-              </div>
-
             </div>
           </div>
           <!-- Tab-Switch Tab -->
@@ -1147,7 +1126,7 @@
                   <span class="settings-status" id="pushSubscriptionStatus">off</span>
                 </div>
               </div>
-              <span class="form-hint" style="grid-column: 1 / -1; margin-top: -8px;">Works through Cloudflare tunnel. Requires HTTPS or localhost. iOS requires PWA (Add to Home Screen).</span>
+              <span class="form-hint" style="grid-column: 1 / -1; margin-top: -8px;">Requires HTTPS or localhost for push delivery. iOS requires PWA (Add to Home Screen).</span>
 
               <!-- Alerts Section -->
               <div class="settings-section-header">Alerts</div>

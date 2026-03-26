@@ -262,15 +262,6 @@ const SSE_EVENTS = {
   // Images
   IMAGE_DETECTED: 'image:detected',
 
-  // Tunnel
-  TUNNEL_STARTED: 'tunnel:started',
-  TUNNEL_STOPPED: 'tunnel:stopped',
-  TUNNEL_PROGRESS: 'tunnel:progress',
-  TUNNEL_ERROR: 'tunnel:error',
-  TUNNEL_QR_ROTATED: 'tunnel:qrRotated',
-  TUNNEL_QR_REGENERATED: 'tunnel:qrRegenerated',
-  TUNNEL_QR_AUTH_USED: 'tunnel:qrAuthUsed',
-
   // Plan orchestration
   PLAN_SUBAGENT: 'plan:subagent',
   PLAN_PROGRESS: 'plan:progress',

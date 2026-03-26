@@ -262,7 +262,6 @@ export const SettingsUpdateSchema = z
     subagentTrackingEnabled: z.boolean().optional(),
     subagentActiveTabOnly: z.boolean().optional(),
     imageWatcherEnabled: z.boolean().optional(),
-    tunnelEnabled: z.boolean().optional(),
     tabTwoRows: z.boolean().optional(),
     agentTeamsEnabled: z.boolean().optional(),
     // UI visibility
@@ -438,12 +437,15 @@ export const RevokeSessionSchema = z.object({
 export const GeneratePlanSchema = z.object({
   taskDescription: z.string().min(1).max(100000),
   detailLevel: z.enum(['brief', 'standard', 'detailed']).optional(),
+  /** When set, plan generation uses this session's working directory */
+  sessionId: z.string().uuid().optional(),
 });
 
 /** POST /api/generate-plan-detailed */
 export const GeneratePlanDetailedSchema = z.object({
   taskDescription: z.string().min(1).max(100000),
   caseName: z.string().max(200).optional(),
+  sessionId: z.string().uuid().optional(),
 });
 
 /** POST /api/cancel-plan-generation */

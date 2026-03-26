@@ -735,8 +735,8 @@ describe('Operation Lightspeed', () => {
   // ═══════════════════════════════════════════════════════════════
 
   describe('SSE Padding Strategy', () => {
-    it('should not include tunnel padding on session:created events (low frequency)', async () => {
-      // When tunnel is NOT active, no events should have padding
+    it('should not include excessive padding between session:created and next SSE event', async () => {
+      // Low-frequency events should not be preceded by large padding blocks
       const controller = new AbortController();
       let rawData = '';
 
@@ -768,8 +768,7 @@ describe('Operation Lightspeed', () => {
         /* expected */
       }
 
-      // SSE_PADDING is 1KB+ of spaces. session:created should not have it
-      // when tunnel is not active. Check that data between events is clean.
+      // SSE payload gaps should stay small between events.
       // Find "session:created" in raw data — check there's no massive padding after it
       const createdIdx = rawData.indexOf('event: session:created');
       expect(createdIdx).toBeGreaterThan(-1);

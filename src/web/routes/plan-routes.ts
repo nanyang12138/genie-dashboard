@@ -29,11 +29,12 @@ export function registerPlanRoutes(app: FastifyInstance, ctx: SessionPort & Even
   // ========== Generate Plan (Simple) ==========
 
   app.post('/api/generate-plan', async (req): Promise<ApiResponse> => {
-    const { taskDescription, detailLevel = 'standard' } = parseBody(
+    const { taskDescription, detailLevel = 'standard', sessionId } = parseBody(
       GeneratePlanSchema,
       req.body,
       'Invalid request body'
     );
+    const planWorkingDir = sessionId ? findSessionOrFail(ctx, sessionId).workingDir : process.cwd();
 
     // Build sophisticated prompt based on Ralph Wiggum methodology
     const detailConfig = {
@@ -126,7 +127,7 @@ NOW: Generate the implementation plan for the task above. Think step by step.`;
 
     // Create temporary session for the AI call using Opus 4.5 for deep reasoning
     const session = new Session({
-      workingDir: process.cwd(),
+      workingDir: planWorkingDir,
       mux: ctx.mux,
       useMux: false, // No mux needed for one-shot
       mode: 'claude',
@@ -223,13 +224,19 @@ NOW: Generate the implementation plan for the task above. Think step by step.`;
   // ========== Generate Plan (Detailed Orchestration) ==========
 
   app.post('/api/generate-plan-detailed', async (req): Promise<ApiResponse> => {
-    const { taskDescription, caseName } = parseBody(GeneratePlanDetailedSchema, req.body, 'Invalid request body');
+    const { taskDescription, caseName, sessionId } = parseBody(
+      GeneratePlanDetailedSchema,
+      req.body,
+      'Invalid request body'
+    );
 
     // Determine output directory for saving wizard results
     let outputDir: string | undefined;
+    let casePathResolved: string | undefined;
     if (caseName) {
       const casePath = validatePathWithinBase(caseName, CASES_DIR);
       if (casePath && existsSync(casePath)) {
+        casePathResolved = casePath;
         outputDir = join(casePath, 'ralph-wizard');
 
         // Clear old ralph-wizard directory to ensure fresh prompts for each generation
@@ -245,8 +252,11 @@ NOW: Generate the implementation plan for the task above. Think step by step.`;
       }
     }
 
+    const planWorkingDir = sessionId
+      ? findSessionOrFail(ctx, sessionId).workingDir
+      : casePathResolved ?? process.cwd();
     const detailedModelConfig = await ctx.getModelConfig();
-    const orchestrator = new PlanOrchestrator(ctx.mux, process.cwd(), outputDir, detailedModelConfig ?? undefined);
+    const orchestrator = new PlanOrchestrator(ctx.mux, planWorkingDir, outputDir, detailedModelConfig ?? undefined);
 
     // Store orchestrator for potential cancellation via API (not on disconnect)
     // Plan generation continues even if browser disconnects - only explicit cancel stops it

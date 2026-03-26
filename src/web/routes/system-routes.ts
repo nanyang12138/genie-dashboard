@@ -10,7 +10,6 @@ import { existsSync, mkdirSync, readdirSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import { homedir, totalmem, freemem, loadavg, cpus } from 'node:os';
 import { execSync } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
 import { ApiErrorCode, createErrorResponse, getErrorMessage, type NiceConfig } from '../../types.js';
 import {
   ConfigUpdateSchema,
@@ -27,9 +26,6 @@ import { getLifecycleLog } from '../../session-lifecycle-log.js';
 import { findSessionOrFail, formatUptime, parseBody, SETTINGS_PATH } from '../route-helpers.js';
 import { SseEvent } from '../sse-events.js';
 import type { SessionPort, EventPort, ConfigPort, InfraPort, AuthPort } from '../ports/index.js';
-import { AUTH_COOKIE_NAME } from '../middleware/auth.js';
-import { QR_AUTH_FAILURE_MAX } from '../../config/tunnel-config.js';
-import { AUTH_SESSION_TTL_MS } from '../../config/auth-config.js';
 
 // Maximum screenshot upload size (10MB)
 const MAX_SCREENSHOT_SIZE = 10 * 1024 * 1024;
@@ -100,124 +96,6 @@ export function registerSystemRoutes(
 
   app.get('/api/status', async () => ctx.getLightState());
 
-  // ========== Tunnel ==========
-
-  app.get('/api/tunnel/status', async () => ctx.tunnelManager.getStatus());
-
-  app.get('/api/tunnel/info', async () => {
-    const status = ctx.tunnelManager.getStatus();
-    const sseClients = ctx.getSseClientCount();
-    const sessions: Array<{ ip: string; ua: string; createdAt: number; method: string }> = [];
-    if (ctx.authSessions) {
-      for (const [, record] of ctx.authSessions) {
-        sessions.push({ ip: record.ip, ua: record.ua, createdAt: record.createdAt, method: record.method });
-      }
-    }
-    return {
-      ...status,
-      sseClients,
-      authEnabled: !!process.env.CODEMAN_PASSWORD,
-      authSessions: sessions,
-    };
-  });
-
-  app.get('/api/tunnel/qr', async (_req, reply) => {
-    const url = ctx.tunnelManager.getUrl();
-    if (!url) {
-      return reply.code(404).send(createErrorResponse(ApiErrorCode.NOT_FOUND, 'Tunnel not running'));
-    }
-    try {
-      const authPassword = process.env.CODEMAN_PASSWORD;
-      if (authPassword) {
-        // Auth enabled — use cached SVG with embedded short code
-        const svg = await ctx.tunnelManager.getQrSvg(url);
-        return { svg, authEnabled: true };
-      }
-      // No auth — just encode the raw tunnel URL
-      const QRCode = await import('qrcode');
-      const svg: string = await QRCode.toString(url, { type: 'svg', margin: 2, width: 256 });
-      return { svg, authEnabled: false };
-    } catch (err) {
-      return reply.code(500).send(createErrorResponse(ApiErrorCode.OPERATION_FAILED, getErrorMessage(err)));
-    }
-  });
-
-  // ═══════════════════════════════════════════════════════════════
-  // Authentication (QR auth, session revocation)
-  // ═══════════════════════════════════════════════════════════════
-
-  // ========== QR Auth Route ==========
-
-  app.get('/q/:code', async (req, reply) => {
-    const shortCode = (req.params as { code: string }).code;
-    const authPassword = process.env.CODEMAN_PASSWORD;
-
-    // No point if auth isn't enabled — just redirect
-    if (!authPassword) {
-      return reply.redirect('/');
-    }
-
-    const clientIp = req.ip;
-
-    // Per-IP rate limit (separate counter from Basic Auth failures)
-    const qrFailures = ctx.qrAuthFailures?.get(clientIp) ?? 0;
-    if (qrFailures >= QR_AUTH_FAILURE_MAX) {
-      return reply.code(429).send('Too Many Requests');
-    }
-
-    // Validate and atomically consume the token
-    if (!shortCode || !ctx.tunnelManager.consumeToken(shortCode)) {
-      ctx.qrAuthFailures?.set(clientIp, qrFailures + 1);
-      return reply.code(401).send('Invalid or expired QR code');
-    }
-
-    // Issue session cookie (same pattern as Basic Auth success path)
-    const sessionToken = randomBytes(32).toString('hex');
-    const clientUA = req.headers['user-agent'] ?? '';
-    ctx.authSessions?.set(sessionToken, {
-      ip: clientIp,
-      ua: clientUA,
-      createdAt: Date.now(),
-      method: 'qr',
-    });
-    ctx.qrAuthFailures?.delete(clientIp);
-
-    // Audit log
-    const lifecycleLog = getLifecycleLog();
-    lifecycleLog.log({
-      event: 'qr_auth',
-      sessionId: 'system',
-      extra: {
-        ip: clientIp,
-        ua: clientUA,
-        shortCodePrefix: shortCode.slice(0, 3) + '***',
-      },
-    });
-
-    reply.setCookie(AUTH_COOKIE_NAME, sessionToken, {
-      httpOnly: true,
-      secure: ctx.https,
-      sameSite: 'lax',
-      maxAge: AUTH_SESSION_TTL_MS / 1000,
-      path: '/',
-    });
-
-    // Broadcast auth notification — desktop sees who authenticated
-    ctx.broadcast(SseEvent.TunnelQrAuthUsed, {
-      ip: clientIp,
-      ua: clientUA,
-      timestamp: Date.now(),
-    });
-
-    return reply.redirect('/');
-  });
-
-  // ========== QR Regeneration ==========
-
-  app.post('/api/tunnel/qr/regenerate', async () => {
-    ctx.tunnelManager.regenerateQrToken();
-    return { success: true };
-  });
 
   // ========== Auth Session Revocation ==========
 
@@ -447,21 +325,6 @@ export function registerSystemRoutes(
         console.log('Image watcher stopped via settings change');
       }
 
-      // Handle tunnel toggle dynamically
-      if ('tunnelEnabled' in settings) {
-        const tunnelEnabled = settings.tunnelEnabled as boolean;
-        if (tunnelEnabled && !ctx.tunnelManager.isRunning()) {
-          ctx.tunnelManager.start(ctx.port, ctx.https);
-          console.log('Tunnel started via settings change');
-        } else if (tunnelEnabled && ctx.tunnelManager.isRunning() && ctx.tunnelManager.getUrl()) {
-          // Tunnel already running — re-emit so the client gets the URL
-          ctx.broadcast(SseEvent.TunnelStarted, { url: ctx.tunnelManager.getUrl() });
-          console.log('Tunnel already running, re-broadcast URL to client');
-        } else if (!tunnelEnabled && ctx.tunnelManager.isRunning()) {
-          ctx.tunnelManager.stop();
-          console.log('Tunnel stopped via settings change');
-        }
-      }
 
       return { success: true };
     } catch (err) {

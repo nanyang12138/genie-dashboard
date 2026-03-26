@@ -19,7 +19,6 @@
  * - **Teams** (4): created, updated, removed, taskUpdated
  * - **Transcript** (4): complete, plan_mode, tool_start, tool_end
  * - **Plan orchestration** (5): started, progress, subagent, completed, cancelled
- * - **Tunnel** (7): started, stopped, progress, error, qrRotated, qrRegenerated, qrAuthUsed
  * - **Image** (1): detected
  * - **Hooks** (6): idle_prompt, permission_prompt, elicitation_dialog, stop, teammate_idle, task_completed
  * - **Cases** (2): created, linked
@@ -255,22 +254,6 @@ export const PlanCompleted = 'plan:completed' as const;
 /** Plan generation cancelled. */
 export const PlanCancelled = 'plan:cancelled' as const;
 
-// ─── Tunnel ──────────────────────────────────────────────────────────────────
-
-/** Cloudflare tunnel started. */
-export const TunnelStarted = 'tunnel:started' as const;
-/** Cloudflare tunnel stopped. */
-export const TunnelStopped = 'tunnel:stopped' as const;
-/** Tunnel startup progress. */
-export const TunnelProgress = 'tunnel:progress' as const;
-/** Tunnel error. */
-export const TunnelError = 'tunnel:error' as const;
-/** QR code rotated (new token generated). */
-export const TunnelQrRotated = 'tunnel:qrRotated' as const;
-/** QR code force-regenerated. */
-export const TunnelQrRegenerated = 'tunnel:qrRegenerated' as const;
-/** QR auth token consumed by a client. */
-export const TunnelQrAuthUsed = 'tunnel:qrAuthUsed' as const;
 
 // ─── Image ───────────────────────────────────────────────────────────────────
 
@@ -448,14 +431,6 @@ export const SseEvent = {
   PlanCompleted,
   PlanCancelled,
 
-  // Tunnel
-  TunnelStarted,
-  TunnelStopped,
-  TunnelProgress,
-  TunnelError,
-  TunnelQrRotated,
-  TunnelQrRegenerated,
-  TunnelQrAuthUsed,
 
   // Image
   ImageDetected,

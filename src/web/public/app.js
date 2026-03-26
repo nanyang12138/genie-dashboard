@@ -7,7 +7,7 @@
  *   terminal-ui.js   — Terminal setup, rendering pipeline, controls
  *   respawn-ui.js    — Respawn banner, countdown timers, presets, run summary
  *   ralph-panel.js   — Ralph state panel, fix_plan, plan versioning
- *   settings-ui.js   — App settings, visibility, web push, lifecycle log, tunnel/QR, help
+ *   settings-ui.js   — App settings, visibility, web push, lifecycle log, help
  *   panels-ui.js     — Subagent panel, agent teams, project insights, file browser, log viewer,
  *                       image popups, monitor, token stats, toast, system stats
  *   session-ui.js    — Quick start, session options modal, case settings, mobile case picker
@@ -220,15 +220,6 @@ const _SSE_HANDLER_MAP = [
   // Images
   [SSE_EVENTS.IMAGE_DETECTED, '_onImageDetected'],
 
-  // Tunnel
-  [SSE_EVENTS.TUNNEL_STARTED, '_onTunnelStarted'],
-  [SSE_EVENTS.TUNNEL_STOPPED, '_onTunnelStopped'],
-  [SSE_EVENTS.TUNNEL_PROGRESS, '_onTunnelProgress'],
-  [SSE_EVENTS.TUNNEL_ERROR, '_onTunnelError'],
-  [SSE_EVENTS.TUNNEL_QR_ROTATED, '_onTunnelQrRotated'],
-  [SSE_EVENTS.TUNNEL_QR_REGENERATED, '_onTunnelQrRegenerated'],
-  [SSE_EVENTS.TUNNEL_QR_AUTH_USED, '_onTunnelQrAuthUsed'],
-
   // Plan orchestration
   [SSE_EVENTS.PLAN_SUBAGENT, '_onPlanSubagent'],
   [SSE_EVENTS.PLAN_PROGRESS, '_onPlanProgress'],
@@ -352,8 +343,6 @@ class CodemanApp {
     // Toast container cache (methods in panels-ui.js)
     this._toastContainer = null;
 
-    // Tunnel indicator state
-    this._tunnelUrl = null;
 
     // Tab alert states: Map<sessionId, 'action' | 'idle'>
     this.tabAlerts = new Map();
@@ -525,8 +514,6 @@ class CodemanApp {
     });
     // Register service worker for push notifications
     this.registerServiceWorker();
-    // Fetch tunnel status for header indicator (desktop only)
-    this.loadTunnelStatus();
     // Share a single settings fetch between both consumers
     const settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null).catch(() => null);
     this.loadQuickStartCases(null, settingsPromise);

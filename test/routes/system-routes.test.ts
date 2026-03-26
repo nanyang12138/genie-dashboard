@@ -910,39 +910,4 @@ describe('system-routes', () => {
     });
   });
 
-  // ========== POST /api/tunnel/qr/regenerate ==========
-
-  describe('POST /api/tunnel/qr/regenerate', () => {
-    it('calls regenerateQrToken on tunnel manager', async () => {
-      // Set up a mock tunnel manager
-      harness.ctx.tunnelManager = {
-        regenerateQrToken: vi.fn(),
-        getStatus: vi.fn(() => ({ running: false })),
-        getUrl: vi.fn(() => null),
-        getQrSvg: vi.fn(),
-        consumeToken: vi.fn(),
-        isRunning: vi.fn(() => false),
-        start: vi.fn(),
-        stop: vi.fn(),
-      } as never;
-
-      // Re-create the harness since tunnelManager was null originally
-      await harness.app.close();
-      harness = await createRouteTestHarness(registerSystemRoutes);
-      harness.ctx.tunnelManager = {
-        regenerateQrToken: vi.fn(),
-        getStatus: vi.fn(() => ({ running: false })),
-        getUrl: vi.fn(() => null),
-        getQrSvg: vi.fn(),
-        consumeToken: vi.fn(),
-        isRunning: vi.fn(() => false),
-        start: vi.fn(),
-        stop: vi.fn(),
-      } as never;
-
-      const res = await harness.app.inject({ method: 'POST', url: '/api/tunnel/qr/regenerate' });
-      expect(res.statusCode).toBe(200);
-      expect(JSON.parse(res.body).success).toBe(true);
-    });
-  });
 });

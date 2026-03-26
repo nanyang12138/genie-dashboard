@@ -654,7 +654,6 @@ Object.assign(CodemanApp.prototype, {
     const overlay = document.getElementById('welcomeOverlay');
     if (overlay) {
       overlay.classList.add('visible');
-      this.loadTunnelStatus();
       this.loadHistorySessions();
     }
   },

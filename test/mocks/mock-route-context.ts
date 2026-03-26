@@ -103,14 +103,12 @@ export function createMockRouteContext(options?: { sessionId?: string }) {
     activePlanOrchestrators: new Map(),
     scheduledRuns: new Map(),
     teamWatcher: { getTeams: vi.fn(() => []), getTeamTasks: vi.fn(() => []), hasActiveTeammates: vi.fn(() => false) },
-    tunnelManager: null,
     pushStore: null,
     startScheduledRun: vi.fn(),
     stopScheduledRun: vi.fn(),
 
     // -- AuthPort --
     authSessions: null,
-    qrAuthFailures: null,
     // https already declared above in ConfigPort (shared property)
 
     // -- OrchestratorPort --

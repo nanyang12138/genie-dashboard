@@ -26,7 +26,6 @@ export const AUTH_COOKIE_NAME = 'codeman_session';
 export interface AuthState {
   authSessions: StaleExpirationMap<string, AuthSessionRecord> | null;
   authFailures: StaleExpirationMap<string, number> | null;
-  qrAuthFailures: StaleExpirationMap<string, number> | null;
 }
 
 /**
@@ -39,7 +38,6 @@ export function registerAuthMiddleware(app: FastifyInstance, https: boolean): Au
   const state: AuthState = {
     authSessions: null,
     authFailures: null,
-    qrAuthFailures: null,
   };
 
   const authPassword = process.env.CODEMAN_PASSWORD;
@@ -60,12 +58,6 @@ export function registerAuthMiddleware(app: FastifyInstance, https: boolean): Au
     refreshOnGet: false,
   });
 
-  // Separate QR auth failure counter — independent from Basic Auth failures
-  state.qrAuthFailures = new StaleExpirationMap<string, number>({
-    ttlMs: AUTH_FAILURE_WINDOW_MS,
-    refreshOnGet: false,
-  });
-
   const authSessions = state.authSessions;
   const authFailures = state.authFailures;
 
@@ -82,11 +74,6 @@ export function registerAuthMiddleware(app: FastifyInstance, https: boolean): Au
       // Non-localhost hook requests fall through to normal auth
     }
 
-    // QR auth path — handled by the route itself (token validation + rate limiting)
-    if (req.url?.startsWith('/q/')) {
-      done();
-      return;
-    }
 
     const clientIp = req.ip;
 

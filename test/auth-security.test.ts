@@ -211,23 +211,23 @@ describe('Auth Security', () => {
 describe('Settings Schema Security', () => {
   it('should accept valid known settings fields', () => {
     const result = SettingsUpdateSchema.safeParse({
-      tunnelEnabled: true,
-      ralphTrackerEnabled: false,
+      ralphTrackerEnabled: true,
+      subagentTrackingEnabled: false,
       defaultClaudeMdPath: '/some/path',
     });
     expect(result.success).toBe(true);
   });
 
-  it('should enforce tunnelEnabled as boolean', () => {
+  it('should enforce ralphTrackerEnabled as boolean', () => {
     const result = SettingsUpdateSchema.safeParse({
-      tunnelEnabled: 'yes',  // truthy string — should be rejected
+      ralphTrackerEnabled: 'yes',  // truthy string — should be rejected
     });
     expect(result.success).toBe(false);
   });
 
   it('should reject unknown fields (strict mode)', () => {
     const result = SettingsUpdateSchema.safeParse({
-      tunnelEnabled: true,
+      ralphTrackerEnabled: true,
       maliciousField: 'injected',
     });
     expect(result.success).toBe(false);
