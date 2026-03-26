@@ -138,7 +138,11 @@ export class RalphStatusParser extends EventEmitter {
    */
   processLine(line: string): void {
     this.processStatusBlockLine(line);
-    this.detectCompletionIndicators(line);
+    // Skip natural language detection for lines inside a RALPH_STATUS block
+    // (the block's STATUS field is handled separately in handleStatusBlock)
+    if (!this._inStatusBlock) {
+      this.detectCompletionIndicators(line);
+    }
   }
 
   /**

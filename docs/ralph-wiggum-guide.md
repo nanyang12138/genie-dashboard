@@ -2,7 +2,7 @@
 
 > This document consolidates official Anthropic documentation, community best practices, and implementation details for autonomous Claude Code loops.
 
-**Last Updated**: 2026-01-24
+**Last Updated**: 2026-03-26
 **Sources**: [Official Anthropic Plugin](https://github.com/anthropics/claude-code/tree/main/plugins/ralph-wiggum), [Claude Code Docs](https://code.claude.com/docs/en/hooks), [Claude Code Best Practices](https://www.anthropic.com/engineering/claude-code-best-practices)
 
 ---
@@ -749,6 +749,37 @@ interface RalphTodoItem {
 /ralph-loop:help          # Show help and usage
 ```
 
+### Circuit Breaker
+
+The circuit breaker prevents infinite loops when Claude is stuck. It tracks progress
+across RALPH_STATUS blocks and transitions through three states:
+
+| State | Meaning | Transition |
+|-------|---------|------------|
+| **CLOSED** | Normal operation | → HALF_OPEN on 2 no-progress iterations |
+| **HALF_OPEN** | Warning: no recent progress | → OPEN on 3 no-progress, or → CLOSED on progress |
+| **OPEN** | Loop stuck, intervention needed | Manual reset via API or UI |
+
+Additional triggers for OPEN:
+- 5+ consecutive iterations with tests failing
+- Claude reports `STATUS: BLOCKED` in a RALPH_STATUS block
+
+**Reset**: `POST /api/sessions/:id/ralph-circuit-breaker/reset` or use the UI dropdown.
+
+### Dual-Condition Exit Gate
+
+To prevent false completions, the exit gate requires **two independent signals**:
+
+1. **EXIT_SIGNAL: true** in a RALPH_STATUS block (explicit "I'm done" flag)
+2. **Completion indicators >= 2** accumulated from:
+   - `STATUS: COMPLETE` in RALPH_STATUS blocks
+   - Natural language patterns ("all tasks completed", "nothing left to do", etc.)
+
+Natural language detection is suppressed inside RALPH_STATUS blocks to avoid
+double-counting from SUMMARY fields.
+
+When both conditions are met, the `exitGateMet` event fires and the UI shows "Complete".
+
 ---
 
 ## Troubleshooting
@@ -833,14 +864,17 @@ POST /api/sessions/:id/auto-clear
 - [Claude Fast - Autonomous Agent Loops](https://claudefa.st/blog/guide/mechanics/autonomous-agent-loops)
 - [DeepWiki - Ralph Loop](https://deepwiki.com/anthropics/claude-plugins-official/5.2.2-ralph-loop)
 
-### Related Codeman Files
-- `src/ralph-tracker.ts` - Core detection engine
-- `src/ralph-loop.ts` - Task orchestration
+### Related Files
+- `src/ralph-tracker.ts` - Core detection engine (todos, completion phrases, loop state)
+- `src/ralph-loop.ts` - Task orchestration (assign, complete, fail, timeout)
+- `src/ralph-status-parser.ts` - RALPH_STATUS block parsing and circuit breaker
+- `src/ralph-stall-detector.ts` - Iteration stall detection
+- `src/ralph-fix-plan-watcher.ts` - @fix_plan.md file watching and parsing
+- `src/ralph-plan-tracker.ts` - Plan task management and checkpoints
+- `src/ralph-loop-config.ts` - Loop configuration
 - `src/respawn-controller.ts` - Session cycling
-- `src/spawn-orchestrator.ts` - Autonomous agent lifecycle (uses RalphTracker for completion)
-- `src/spawn-detector.ts` - Detects `<spawn1337>` tags in terminal output
 - `src/types.ts` - Type definitions
 
 ---
 
-*This documentation is maintained as part of the Codeman project. For updates, see the main [CLAUDE.md](../CLAUDE.md).*
+*This documentation is maintained as part of the Genie Dashboard project. For updates, see the main [CLAUDE.md](../CLAUDE.md).*
