@@ -170,6 +170,17 @@ const PROMISE_PATTERN = /<promise>\s*([^<]+?)\s*<\/promise>/i;
  */
 const PROMISE_PARTIAL_PATTERN = /<promise>\s*([^<]*)$/i;
 
+/** Normalizes PTY line endings so full-screen TUIs using carriage returns still parse correctly. */
+const PTY_NEWLINE_PATTERN = /\r\n|\r/g;
+// eslint-disable-next-line no-control-regex
+const ANSI_CURSOR_POSITION_PATTERN = /\x1b\[\d+;\d+H/g;
+// eslint-disable-next-line no-control-regex
+const ANSI_VERTICAL_POSITION_PATTERN = /\x1b\[\d+d/g;
+// eslint-disable-next-line no-control-regex
+const ANSI_NEXT_LINE_PATTERN = /\x1b\[(?:\d+)?E/g;
+// eslint-disable-next-line no-control-regex
+const ANSI_CURSOR_FORWARD_PATTERN = /\x1b\[(\d+)?C/g;
+
 // ---------- Todo Item Patterns ----------
 // Claude Code outputs todos in multiple formats; we detect all of them
 
@@ -1176,8 +1187,13 @@ export class RalphTracker extends EventEmitter {
    * Process raw terminal data to detect inner loop patterns.
    */
   processTerminalData(data: string): void {
-    // Remove ANSI escape codes for cleaner parsing
-    const cleanData = data.replace(ANSI_ESCAPE_PATTERN_SIMPLE, '');
+    // Preserve logical line boundaries before stripping ANSI.
+    const cleanData = data
+      .replace(ANSI_CURSOR_POSITION_PATTERN, '\n')
+      .replace(ANSI_VERTICAL_POSITION_PATTERN, '\n')
+      .replace(ANSI_NEXT_LINE_PATTERN, '\n')
+      .replace(ANSI_CURSOR_FORWARD_PATTERN, (_, count: string | undefined) => ' '.repeat(Number(count || '1')))
+      .replace(ANSI_ESCAPE_PATTERN_SIMPLE, '');
     this.processCleanData(cleanData);
   }
 
@@ -1185,12 +1201,14 @@ export class RalphTracker extends EventEmitter {
    * Process pre-stripped terminal data (ANSI codes already removed).
    */
   processCleanData(cleanData: string): void {
+    const normalizedData = cleanData.replace(PTY_NEWLINE_PATTERN, '\n');
+
     // If tracker is disabled, only check for patterns that should auto-enable it
     if (!this._loopState.enabled) {
       if (this._autoEnableDisabled) {
         return;
       }
-      if (this.shouldAutoEnable(cleanData)) {
+      if (this.shouldAutoEnable(normalizedData)) {
         this.enable();
       } else {
         return;
@@ -1198,7 +1216,7 @@ export class RalphTracker extends EventEmitter {
     }
 
     // Buffer data for line-based processing
-    this._lineBuffer += cleanData;
+    this._lineBuffer += normalizedData;
 
     // Prevent unbounded line buffer growth from very long lines
     if (this._lineBuffer.length > MAX_LINE_BUFFER_SIZE) {
@@ -1214,7 +1232,7 @@ export class RalphTracker extends EventEmitter {
     }
 
     // Also check the current buffer for multi-line patterns
-    this.checkMultiLinePatterns(cleanData);
+    this.checkMultiLinePatterns(normalizedData);
 
     // Cleanup expired todos (throttled to avoid running on every chunk)
     this.maybeCleanupExpiredTodos();

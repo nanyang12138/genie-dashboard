@@ -36,8 +36,8 @@ const KeyboardAccessoryBar = {
 
   /** Create and inject the accessory bar */
   init() {
-    // Only on mobile
-    if (!MobileDetection.isTouchDevice()) return;
+    // Only on actual phones — skip unless viewport ≤ 430px (phone portrait)
+    if (!MobileDetection.isTouchDevice() || window.innerWidth > 430) return;
 
     // Create accessory bar element
     this.element = document.createElement('div');

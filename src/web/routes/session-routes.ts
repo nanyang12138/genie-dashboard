@@ -54,7 +54,7 @@ import { MAX_INPUT_LENGTH, MAX_SESSION_NAME_LENGTH } from '../../config/terminal
 
 // Pre-compiled regex for terminal buffer cleaning (avoids per-request compilation)
 // eslint-disable-next-line no-control-regex
-const CLAUDE_BANNER_PATTERN = /\x1b\[1mClaud/;
+const CLAUDE_BANNER_PATTERN = /\x1b\[1m(?:Claud|Genie)/;
 // eslint-disable-next-line no-control-regex
 const CTRL_L_PATTERN = /\x0c/g;
 const LEADING_WHITESPACE_PATTERN = /^[\s\r\n]+/;

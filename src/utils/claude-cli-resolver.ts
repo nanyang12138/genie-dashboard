@@ -1,9 +1,9 @@
 /**
- * @fileoverview Shared Claude CLI binary resolution.
+ * @fileoverview Shared CLI binary resolution for Genie (AMD's Claude Code wrapper).
  *
- * Finds the `claude` binary across common installation paths and provides
+ * Finds the `genie` binary across common installation paths and provides
  * an augmented PATH string. Used by session.ts and tmux-manager.ts
- * to locate the Claude CLI.
+ * to locate the Genie CLI.
  *
  * @module utils/claude-cli-resolver
  */
@@ -14,8 +14,10 @@ import { delimiter, dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 import { EXEC_TIMEOUT_MS } from '../config/exec-timeout.js';
 
-/** Common directories where the Claude CLI binary may be installed */
+const GENIE_RELEASE_DIR = '/proj/verif_release_ro/genie/current/bin';
+
 const CLAUDE_SEARCH_DIRS = [
+  GENIE_RELEASE_DIR,
   join(homedir(), '.local', 'bin'),
   join(homedir(), '.claude', 'local'),
   '/usr/local/bin',
@@ -23,39 +25,38 @@ const CLAUDE_SEARCH_DIRS = [
   join(homedir(), 'bin'),
 ];
 
-/** Cached directory containing the claude binary (empty string = searched but not found) */
 let _claudeDir: string | null = null;
 
 /**
- * Finds the directory containing the `claude` binary.
- * Checks `which claude` first, then falls back to common install locations.
- * Result is cached for subsequent calls.
- *
- * @returns Directory path, or null if not found
+ * Finds the directory containing the `genie` binary.
+ * Checks the standard release path first, then `which genie`, then fallback locations.
  */
 export function findClaudeDir(): string | null {
   if (_claudeDir !== null) return _claudeDir || null;
 
-  // Try `which` first (respects current PATH)
+  if (existsSync(join(GENIE_RELEASE_DIR, 'genie'))) {
+    _claudeDir = GENIE_RELEASE_DIR;
+    return _claudeDir;
+  }
+
   try {
-    const result = execSync('which claude', { encoding: 'utf-8', timeout: EXEC_TIMEOUT_MS }).trim();
+    const result = execSync('which genie', { encoding: 'utf-8', timeout: EXEC_TIMEOUT_MS }).trim();
     if (result && existsSync(result)) {
       _claudeDir = dirname(result);
       return _claudeDir;
     }
   } catch {
-    // Claude not in PATH, will check common locations
+    // genie not in PATH, will check common locations
   }
 
-  // Fallback: check common installation directories
   for (const dir of CLAUDE_SEARCH_DIRS) {
-    if (existsSync(join(dir, 'claude'))) {
+    if (existsSync(join(dir, 'genie'))) {
       _claudeDir = dir;
       return _claudeDir;
     }
   }
 
-  _claudeDir = ''; // mark as searched, not found
+  _claudeDir = '';
   return null;
 }
 

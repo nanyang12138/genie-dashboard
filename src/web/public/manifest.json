@@ -1,6 +1,6 @@
 {
-  "name": "Codeman",
-  "short_name": "Codeman",
+  "name": "Genie Dashboard",
+  "short_name": "Genie",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a0a0a",

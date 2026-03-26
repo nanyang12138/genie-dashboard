@@ -348,7 +348,7 @@ export class SubagentWatcher extends EventEmitter {
     const result = new Map<number, { environ: string; cmdline: string }>();
     try {
       const pgrepOutput = await new Promise<string>((resolve, reject) => {
-        execFile('pgrep', ['-f', 'claude'], { encoding: 'utf8' }, (err, stdout) => {
+        execFile('pgrep', ['-f', '.genie-bin|claude'], { encoding: 'utf8' }, (err, stdout) => {
           if (err) return reject(err);
           resolve(stdout);
         });
@@ -720,9 +720,9 @@ export class SubagentWatcher extends EventEmitter {
    */
   private async findSubagentProcess(sessionId: string): Promise<number | null> {
     try {
-      // Find all claude processes (async to avoid blocking event loop)
+      // Find all genie/claude processes (async to avoid blocking event loop)
       const pgrepOutput = await new Promise<string>((resolve, reject) => {
-        execFile('pgrep', ['-f', 'claude'], { encoding: 'utf8' }, (err, stdout) => {
+        execFile('pgrep', ['-f', '.genie-bin|claude'], { encoding: 'utf8' }, (err, stdout) => {
           if (err) return reject(err);
           resolve(stdout);
         });

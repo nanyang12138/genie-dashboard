@@ -7895,3 +7895,8 @@ kbd {
   margin-top: 4px;
   font-size: 0.7rem;
 }
+
+/* Hide mobile keyboard accessory bar on desktop (mobile.css is not loaded above 1023px) */
+.keyboard-accessory-bar {
+  display: none !important;
+}

@@ -17,8 +17,57 @@ import { autoConfigureRalph, CASES_DIR, SETTINGS_PATH, findSessionOrFail, parseB
 import { writeHooksConfig } from '../../hooks-config.js';
 import { generateClaudeMd } from '../../templates/claude-md.js';
 import { getLifecycleLog } from '../../session-lifecycle-log.js';
+import { stripAnsi } from '../../utils/index.js';
 import type { SessionPort, EventPort, RespawnPort, ConfigPort, InfraPort } from '../ports/index.js';
 import { MAX_CONCURRENT_SESSIONS } from '../../config/map-limits.js';
+
+// Preserve Ink/TUI spacing before stripping ANSI so prompt detection can
+// recognize text rendered via cursor movement rather than plain newlines.
+// eslint-disable-next-line no-control-regex
+const ANSI_CURSOR_POSITION_PATTERN = /\x1b\[\d+;\d+H/g;
+// eslint-disable-next-line no-control-regex
+const ANSI_VERTICAL_POSITION_PATTERN = /\x1b\[\d+d/g;
+// eslint-disable-next-line no-control-regex
+const ANSI_NEXT_LINE_PATTERN = /\x1b\[(?:\d+)?E/g;
+// eslint-disable-next-line no-control-regex
+const ANSI_CURSOR_FORWARD_PATTERN = /\x1b\[(\d+)?C/g;
+const PTY_NEWLINE_PATTERN = /\r\n|\r/g;
+
+export function normalizeTerminalText(buffer: string): string {
+  return stripAnsi(
+    buffer
+      .replace(ANSI_CURSOR_POSITION_PATTERN, '\n')
+      .replace(ANSI_VERTICAL_POSITION_PATTERN, '\n')
+      .replace(ANSI_NEXT_LINE_PATTERN, '\n')
+      .replace(ANSI_CURSOR_FORWARD_PATTERN, (_, count: string | undefined) => ' '.repeat(Number(count || '1')))
+      .replace(PTY_NEWLINE_PATTERN, '\n')
+  )
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+export function hasWorkspaceTrustPrompt(buffer: string): boolean {
+  const normalized = normalizeTerminalText(buffer);
+  return (
+    normalized.includes('quick safety check') &&
+    normalized.includes('trust this folder') &&
+    normalized.includes('security guide')
+  );
+}
+
+export function hasClaudeReadyPrompt(buffer: string): boolean {
+  const normalized = normalizeTerminalText(buffer);
+  if (hasWorkspaceTrustPrompt(buffer)) return false;
+  return (
+    normalized.includes('tokens') ||
+    normalized.includes('try "') ||
+    normalized.includes("try '") ||
+    normalized.includes('bypass permiss') ||
+    normalized.includes('/effort') ||
+    (buffer.includes('\u276F') && normalized.includes('claude code'))
+  );
+}
 
 export function registerRalphRoutes(
   app: FastifyInstance,
@@ -474,16 +523,51 @@ export function registerRalphRoutes(
     // Async: poll for CLI readiness, then send prompt
     setImmediate(() => {
       const pollReady = async () => {
+        let readyDetected = false;
+        let lastTrustConfirmAt = 0;
+        let trustConfirmAttempts = 0;
+
         for (let attempt = 0; attempt < 60; attempt++) {
           await new Promise((r) => setTimeout(r, 500));
           const s = ctx.sessions.get(sessionId);
           if (!s) return; // session was deleted
-          // Check terminal output for prompt indicator
-          const termBuf = s.getTerminalBuffer().slice(-2048);
-          if (termBuf.includes('\u276F') || termBuf.includes('tokens')) {
+
+          const termBuf = s.getTerminalBuffer().slice(-4096);
+
+          // New Claude sessions can pause on the workspace trust prompt even when
+          // permissions are bypassed. Confirm trust first, then wait for the
+          // real interactive prompt before sending the Ralph task prompt.
+          if (hasWorkspaceTrustPrompt(termBuf)) {
+            const now = Date.now();
+            if (trustConfirmAttempts < 3 && now - lastTrustConfirmAt >= 1500) {
+              trustConfirmAttempts += 1;
+              lastTrustConfirmAt = now;
+              console.log(
+                `[RalphLoop] Confirming trusted workspace for session ${sessionId} (attempt ${trustConfirmAttempts})`
+              );
+              try {
+                await s.writeViaMux('\r');
+              } catch (err) {
+                console.warn(
+                  `[RalphLoop] Failed to confirm trusted workspace for session ${sessionId}:`,
+                  getErrorMessage(err)
+                );
+              }
+            }
+            continue;
+          }
+
+          if (hasClaudeReadyPrompt(termBuf)) {
+            readyDetected = true;
             break;
           }
         }
+
+        if (!readyDetected) {
+          console.warn(`[RalphLoop] Claude CLI never reached a ready prompt for session ${sessionId}`);
+          return;
+        }
+
         // Small extra delay for CLI to settle
         await new Promise((r) => setTimeout(r, 2000));
         const s = ctx.sessions.get(sessionId);

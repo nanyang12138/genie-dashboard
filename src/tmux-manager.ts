@@ -90,10 +90,10 @@ const IS_TEST_MODE = !!process.env.VITEST;
 const MUX_SESSIONS_FILE = join(homedir(), '.codeman', 'mux-sessions.json');
 
 /** Regex to validate tmux session names (only allow safe characters) */
-const SAFE_MUX_NAME_PATTERN = /^codeman-[a-f0-9-]+$/;
+const SAFE_MUX_NAME_PATTERN = /^genie-[a-f0-9-]+$/;
 
-/** Legacy pattern for pre-rename sessions (claudeman- prefix) */
-const LEGACY_MUX_NAME_PATTERN = /^claudeman-[a-f0-9-]+$/;
+/** Legacy pattern for pre-rename sessions (codeman-/claudeman- prefix) */
+const LEGACY_MUX_NAME_PATTERN = /^(?:codeman|claudeman)-[a-f0-9-]+$/;
 
 /** Regex to validate tmux pane targets (e.g., "%0", "%1", "0", "1") */
 const SAFE_PANE_TARGET_PATTERN = /^(%\d+|\d+)$/;
@@ -207,11 +207,11 @@ function buildSpawnCommand(options: {
       options.resumeSessionId && /^[a-f0-9-]+$/.test(options.resumeSessionId) ? options.resumeSessionId : undefined;
     const permFlags = buildClaudePermissionFlags(options.claudeMode, options.allowedTools);
     if (safeResumeId) {
-      const resumeCmd = `claude${permFlags} --resume "${safeResumeId}"${modelFlag}`;
-      const fallbackCmd = `claude${permFlags} --session-id "${options.sessionId}"${modelFlag}`;
+      const resumeCmd = `genie${permFlags} --resume "${safeResumeId}"${modelFlag}`;
+      const fallbackCmd = `genie${permFlags} --session-id "${options.sessionId}"${modelFlag}`;
       return `${resumeCmd} || ${fallbackCmd}`;
     }
-    return `claude${permFlags} --session-id "${options.sessionId}"${modelFlag}`;
+    return `genie${permFlags} --session-id "${options.sessionId}"${modelFlag}`;
   }
   if (options.mode === 'opencode') {
     return buildOpenCodeCommand(options.openCodeConfig);
@@ -388,7 +388,7 @@ export class TmuxManager extends EventEmitter implements TerminalMultiplexer {
       openCodeConfig,
       resumeSessionId,
     } = options;
-    const muxName = `codeman-${sessionId.slice(0, 8)}`;
+    const muxName = `genie-${sessionId.slice(0, 8)}`;
 
     if (!isValidMuxName(muxName)) {
       throw new Error('Invalid session name: contains unsafe characters');
@@ -419,7 +419,7 @@ export class TmuxManager extends EventEmitter implements TerminalMultiplexer {
     if (mode === 'claude') {
       const claudeDir = findClaudeDir();
       if (!claudeDir) {
-        throw new Error('Claude CLI not found. Install it with: curl -fsSL https://claude.ai/install.sh | bash');
+        throw new Error('Genie CLI not found. Load it with: module load genie/current');
       }
       pathExport = `export PATH="${claudeDir}:$PATH" && `;
     } else if (mode === 'opencode') {
@@ -433,14 +433,26 @@ export class TmuxManager extends EventEmitter implements TerminalMultiplexer {
     const envExports = [
       'export LANG=en_US.UTF-8',
       'export LC_ALL=en_US.UTF-8',
-      'unset COLORTERM',
+      'export COLORTERM=truecolor',
+      'export TERM=xterm-256color',
       'export CODEMAN_MUX=1',
       `export CODEMAN_SESSION_ID=${sessionId}`,
       `export CODEMAN_MUX_NAME=${muxName}`,
       `export CODEMAN_API_URL=${process.env.CODEMAN_API_URL || 'http://localhost:3000'}`,
     ];
-    // Only unset CLAUDECODE for Claude sessions
-    if (mode === 'claude') envExports.splice(2, 0, 'unset CLAUDECODE');
+    // Only unset CLAUDECODE for Claude/Genie sessions
+    if (mode === 'claude') {
+      envExports.splice(2, 0, 'unset CLAUDECODE');
+      // Let the genie wrapper script resolve credentials from its release directory.
+      // Only propagate an explicit override if the user set one AND the file exists.
+      if (process.env.GENIE_CREDENTIALS_FILE) {
+        envExports.push(`export GENIE_CREDENTIALS_FILE="${process.env.GENIE_CREDENTIALS_FILE}"`);
+      }
+      // Source modules init so genie can be found in tmux shell
+      envExports.push(
+        'source /usr/share/Modules/init/bash 2>/dev/null && module load genie/current 2>/dev/null || true'
+      );
+    }
     const envExportsStr = envExports.join(' && ');
 
     const baseCmd = buildSpawnCommand({
@@ -653,13 +665,19 @@ export class TmuxManager extends EventEmitter implements TerminalMultiplexer {
     const envExports = [
       'export LANG=en_US.UTF-8',
       'export LC_ALL=en_US.UTF-8',
-      'unset COLORTERM',
+      'export COLORTERM=truecolor',
+      'export TERM=xterm-256color',
       'export CODEMAN_MUX=1',
       `export CODEMAN_SESSION_ID=${sessionId}`,
       `export CODEMAN_MUX_NAME=${muxName}`,
       `export CODEMAN_API_URL=${process.env.CODEMAN_API_URL || 'http://localhost:3000'}`,
     ];
-    if (mode === 'claude') envExports.splice(2, 0, 'unset CLAUDECODE');
+    if (mode === 'claude') {
+      envExports.splice(2, 0, 'unset CLAUDECODE');
+      envExports.push(
+        'source /usr/share/Modules/init/bash 2>/dev/null && module load genie/current 2>/dev/null || true'
+      );
+    }
     const envExportsStr = envExports.join(' && ');
 
     const baseCmd = buildSpawnCommand({
@@ -949,10 +967,15 @@ export class TmuxManager extends EventEmitter implements TerminalMultiplexer {
     }
 
     for (const [sessionName, pid] of activeSessions) {
-      if (!sessionName.startsWith('codeman-') && !sessionName.startsWith('claudeman-')) continue;
+      if (
+        !sessionName.startsWith('genie-') &&
+        !sessionName.startsWith('codeman-') &&
+        !sessionName.startsWith('claudeman-')
+      )
+        continue;
       if (knownMuxNames.has(sessionName)) continue;
 
-      const fragment = sessionName.replace(/^(?:codeman|claudeman)-/, '');
+      const fragment = sessionName.replace(/^(?:genie|codeman|claudeman)-/, '');
       const sessionId = `restored-${fragment}`;
       const session: MuxSession = {
         sessionId,

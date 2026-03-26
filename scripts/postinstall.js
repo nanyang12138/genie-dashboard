@@ -17,14 +17,13 @@ import { createRequire } from 'module';
 
 const MIN_NODE_VERSION = 18;
 
-// Claude CLI search paths (must match src/session.ts)
+// Genie CLI search paths
 const home = homedir();
 const CLAUDE_SEARCH_PATHS = [
-    join(home, '.local/bin/claude'),
-    join(home, '.claude/local/claude'),
-    '/usr/local/bin/claude',
-    join(home, '.npm-global/bin/claude'),
-    join(home, 'bin/claude'),
+    '/proj/verif_release_ro/genie/current/bin/genie',
+    join(home, '.local/bin/genie'),
+    '/usr/local/bin/genie',
+    join(home, 'bin/genie'),
 ];
 
 // ============================================================================
@@ -198,17 +197,17 @@ if (commandExists('tmux')) {
 }
 
 // ----------------------------------------------------------------------------
-// 3. Check if Claude CLI is found
+// 3. Check if Genie CLI is found
 // ----------------------------------------------------------------------------
 
 let claudeFound = false;
 let claudePath = null;
 
 // First try PATH lookup
-if (commandExists('claude')) {
+if (commandExists('genie')) {
     claudeFound = true;
     try {
-        const checkCmd = platform() === 'win32' ? 'where claude' : 'command -v claude';
+        const checkCmd = platform() === 'win32' ? 'where genie' : 'command -v genie';
         claudePath = execSync(checkCmd, { stdio: 'pipe', encoding: 'utf-8' }).trim().split('\n')[0];
     } catch {
         // Ignore, we know it exists
@@ -228,13 +227,13 @@ if (!claudeFound) {
 
 if (claudeFound) {
     const pathInfo = claudePath ? colors.dim(` (${claudePath})`) : '';
-    console.log(colors.green('✓ Claude CLI found') + pathInfo);
+    console.log(colors.green('✓ Genie CLI found') + pathInfo);
 } else {
     hasWarnings = true;
-    console.log(colors.yellow('⚠ Claude CLI not found'));
-    console.log(colors.dim('  Claude CLI is required to run AI sessions.'));
-    console.log(colors.dim('  Install:'));
-    console.log(colors.cyan('    curl -fsSL https://claude.ai/install.sh | bash'));
+    console.log(colors.yellow('⚠ Genie CLI not found'));
+    console.log(colors.dim('  Genie CLI is required to run AI sessions.'));
+    console.log(colors.dim('  Load with:'));
+    console.log(colors.cyan('    module load genie/current'));
 }
 
 // ----------------------------------------------------------------------------

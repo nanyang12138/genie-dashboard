@@ -1030,7 +1030,7 @@ export class Session extends EventEmitter {
         // Pass --session-id to use the SAME ID as the Codeman session
         // This ensures subagents can be directly matched to the correct tab
         const args = buildInteractiveArgs(this.id, this._claudeMode, this._model, this._allowedTools);
-        this.ptyProcess = pty.spawn('claude', args, {
+        this.ptyProcess = pty.spawn('genie', args, {
           name: 'xterm-256color',
           cols: 120,
           rows: 40,
@@ -1038,10 +1038,10 @@ export class Session extends EventEmitter {
           env: buildClaudeEnv(this.id),
         });
       } catch (spawnErr) {
-        console.error('[Session] Failed to spawn Claude PTY:', spawnErr);
+        console.error('[Session] Failed to spawn Genie PTY:', spawnErr);
         this._status = 'stopped';
-        this.emit('error', `Failed to start Claude: ${spawnErr}`);
-        throw new Error(`Failed to spawn Claude process: ${spawnErr}`);
+        this.emit('error', `Failed to start Genie: ${spawnErr}`);
+        throw new Error(`Failed to spawn Genie process: ${spawnErr}`);
       }
     }
 
@@ -1192,10 +1192,11 @@ export class Session extends EventEmitter {
       return _cleanData;
     };
 
-    // Forward to Ralph tracker to detect Ralph loops and todos
-    // (opencode sessions already returned early at line 1209)
+    // Forward raw PTY data so Ralph tracker can preserve TUI row boundaries
+    // before stripping ANSI. Claude's Ink UI redraws status blocks with cursor
+    // positioning instead of plain newlines.
     if (this._ralphTracker.enabled || !this._ralphTracker.autoEnableDisabled) {
-      this._ralphTracker.processCleanData(getCleanData());
+      this._ralphTracker.processTerminalData(rawData);
     }
 
     // Forward to Bash tool parser to detect file-viewing commands
@@ -1472,7 +1473,7 @@ export class Session extends EventEmitter {
         const args = buildPromptArgs(prompt, model);
 
         try {
-          this.ptyProcess = pty.spawn('claude', args, {
+          this.ptyProcess = pty.spawn('genie', args, {
             name: 'xterm-256color',
             cols: 120,
             rows: 40,
@@ -1480,10 +1481,10 @@ export class Session extends EventEmitter {
             env: buildClaudeEnv(this.id),
           });
         } catch (spawnErr) {
-          console.error('[Session] Failed to spawn Claude PTY for runPrompt:', spawnErr);
+          console.error('[Session] Failed to spawn Genie PTY for runPrompt:', spawnErr);
           this.emit(
             'error',
-            `Failed to spawn Claude: ${spawnErr instanceof Error ? spawnErr.message : String(spawnErr)}`
+            `Failed to spawn Genie: ${spawnErr instanceof Error ? spawnErr.message : String(spawnErr)}`
           );
           throw spawnErr;
         }

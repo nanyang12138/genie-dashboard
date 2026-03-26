@@ -1049,8 +1049,14 @@ Object.assign(CodemanApp.prototype, {
         this.showToast(data.error || 'Failed to start', 'error');
         return;
       }
-      this.ralphClosedSessions.delete(data.sessionId);
-      await this.selectSession(data.sessionId);
+      const sessionId = data.sessionId || data.data?.sessionId;
+      if (!sessionId) {
+        console.error('Ralph loop start succeeded but no sessionId was returned:', data);
+        this.showToast('Failed to start Ralph loop: missing session ID', 'error');
+        return;
+      }
+      this.ralphClosedSessions.delete(sessionId);
+      await this.selectSession(sessionId);
       this.showToast(`Ralph Loop started in ${config.caseName}`, 'success');
     } catch (err) {
       console.error('Failed to start Ralph loop:', err);

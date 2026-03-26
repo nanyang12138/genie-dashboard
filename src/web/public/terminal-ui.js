@@ -78,6 +78,22 @@ Object.assign(CodemanApp.prototype, {
       return true;
     });
 
+    // Bypass IME interception for the '/' key so the Genie slash command
+    // picker works even when a Chinese/Japanese/Korean IME is active.
+    // IMEs often remap '/' to punctuation (e.g. '、'), generating keyCode 229
+    // which the handler above blocks. We catch it early and send '/' directly.
+    const self = this;
+    container.addEventListener('keydown', (ev) => {
+      if ((ev.isComposing || ev.keyCode === 229)
+          && ev.code === 'Slash' && !ev.ctrlKey && !ev.altKey && !ev.metaKey) {
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        if (self.activeSessionId) {
+          self._sendInputAsync(self.activeSessionId, ev.shiftKey ? '?' : '/');
+        }
+      }
+    }, true);
+
     // WebGL renderer for GPU-accelerated terminal rendering.
     // Previously caused "page unresponsive" crashes from synchronous GPU stalls,
     // but the 48KB/frame flush cap in flushPendingWrites() now prevents
@@ -895,7 +911,8 @@ Object.assign(CodemanApp.prototype, {
   _updateLocalEchoState() {
       const settings = this.loadAppSettingsFromStorage();
       const session = this.activeSessionId ? this.sessions.get(this.activeSessionId) : null;
-      const echoEnabled = settings.localEchoEnabled ?? MobileDetection.isTouchDevice();
+      const isActualMobile = MobileDetection.isTouchDevice() && window.innerWidth <= 430;
+      const echoEnabled = settings.localEchoEnabled ?? isActualMobile;
       const shouldEnable = !!(echoEnabled && session);
       if (this._localEchoEnabled && !shouldEnable) {
           this._localEchoOverlay?.clear();
