@@ -31,12 +31,15 @@ import {
   FlickerFilterSchema,
   QuickRunSchema,
   QuickStartSchema,
+  DeleteSessionQuerySchema,
+  TerminalQuerySchema,
 } from '../schemas.js';
 import {
   autoConfigureRalph,
   CASES_DIR,
   findSessionOrFail,
   parseBody,
+  parseQuery,
   persistAndBroadcastSession,
   SETTINGS_PATH,
   validatePathWithinBase,
@@ -246,7 +249,7 @@ export function registerSessionRoutes(
 
   app.delete('/api/sessions/:id', async (req): Promise<ApiResponse> => {
     const { id } = req.params as { id: string };
-    const query = req.query as { killMux?: string };
+    const query = parseQuery(DeleteSessionQuerySchema, req.query);
     const killMux = query.killMux !== 'false'; // Default to true
 
     if (!ctx.sessions.has(id)) {
@@ -502,10 +505,10 @@ export function registerSessionRoutes(
   //   tail=<bytes> - Only return last N bytes (faster initial load)
   app.get('/api/sessions/:id/terminal', async (req) => {
     const { id } = req.params as { id: string };
-    const query = req.query as { tail?: string };
+    const query = parseQuery(TerminalQuerySchema, req.query);
     const session = findSessionOrFail(ctx, id);
 
-    const tailBytes = query.tail ? parseInt(query.tail, 10) : 0;
+    const tailBytes = query.tail ?? 0;
     const fullSize = session.terminalBufferLength;
     let truncated = false;
     let cleanBuffer: string;

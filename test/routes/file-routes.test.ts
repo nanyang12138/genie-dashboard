@@ -179,10 +179,9 @@ describe('file-routes', () => {
         method: 'GET',
         url: `/api/sessions/${harness.ctx._sessionId}/file-content`,
       });
-      expect(res.statusCode).toBe(200);
+      expect(res.statusCode).toBe(400);
       const body = JSON.parse(res.body);
       expect(body.success).toBe(false);
-      expect(body.error).toContain('Missing path');
     });
 
     it('returns text file content', async () => {

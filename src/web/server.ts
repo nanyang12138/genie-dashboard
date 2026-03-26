@@ -107,6 +107,8 @@ import {
   registerOrchestratorRoutes,
   registerWsRoutes,
 } from './routes/index.js';
+import { SseEventsQuerySchema } from './schemas.js';
+import { parseQuery } from './route-helpers.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -561,7 +563,7 @@ export class WebServer extends EventEmitter {
       // Parse optional session subscription filter from query parameter.
       // /api/events?sessions=id1,id2 — client only receives events for those sessions.
       // /api/events (no param) — client receives all events (backwards-compatible).
-      const query = req.query as { sessions?: string };
+      const query = parseQuery(SseEventsQuerySchema, req.query);
       let sessionFilter: Set<string> | null = null;
       if (query.sessions) {
         const ids = query.sessions

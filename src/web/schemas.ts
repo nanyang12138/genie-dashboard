@@ -583,6 +583,99 @@ export type PushSubscribeInput = z.infer<typeof PushSubscribeSchema>;
 export type PushPreferencesUpdateInput = z.infer<typeof PushPreferencesUpdateSchema>;
 export type RalphLoopStartInput = z.infer<typeof RalphLoopStartSchema>;
 
+// ========== Query Parameter Schemas ==========
+
+/** Coerce a string query param to a bounded integer, with default */
+const intQueryParam = (min: number, max: number) =>
+  z
+    .string()
+    .regex(/^\d+$/, 'Must be a non-negative integer')
+    .transform(Number)
+    .pipe(z.number().int().min(min).max(max));
+
+/** GET /api/events?sessions=id1,id2 */
+export const SseEventsQuerySchema = z.object({
+  sessions: z.string().max(2000).optional(),
+});
+
+/** GET /api/sessions/:id/files?depth&showHidden */
+export const FileTreeQuerySchema = z.object({
+  depth: intQueryParam(1, 10).optional(),
+  showHidden: z.enum(['true', 'false']).optional(),
+});
+
+/** GET /api/sessions/:id/file-content?path&lines&raw */
+export const FileContentQuerySchema = z.object({
+  path: z.string().min(1).max(2000),
+  lines: intQueryParam(1, 10000).optional(),
+  raw: z.enum(['true', 'false']).optional(),
+});
+
+/** GET /api/sessions/:id/file-raw?path */
+export const FileRawQuerySchema = z.object({
+  path: z.string().min(1).max(2000),
+});
+
+/** GET /api/sessions/:id/tail-file?path&lines */
+export const FileTailQuerySchema = z.object({
+  path: z.string().min(1).max(2000),
+  lines: intQueryParam(1, 100000).optional(),
+});
+
+/** GET /api/sessions/:id/terminal?tail */
+export const TerminalQuerySchema = z.object({
+  tail: intQueryParam(0, 10000000).optional(),
+});
+
+/** DELETE /api/sessions/:id?killMux */
+export const DeleteSessionQuerySchema = z.object({
+  killMux: z.enum(['true', 'false']).optional(),
+});
+
+/** GET /api/session-lifecycle?sessionId&event&since&limit */
+export const LifecycleQuerySchema = z.object({
+  sessionId: z.string().max(200).optional(),
+  event: z
+    .enum([
+      'created',
+      'started',
+      'exit',
+      'deleted',
+      'detached',
+      'recovered',
+      'stale_cleaned',
+      'mux_died',
+      'server_started',
+      'server_stopped',
+      'qr_auth',
+    ])
+    .optional(),
+  since: intQueryParam(0, Number.MAX_SAFE_INTEGER).optional(),
+  limit: intQueryParam(1, 1000).optional(),
+});
+
+/** GET /api/subagents?minutes */
+export const SubagentsQuerySchema = z.object({
+  minutes: intQueryParam(1, 14400).optional(),
+});
+
+/** GET /api/subagents/:agentId/transcript?limit&format */
+export const TranscriptQuerySchema = z.object({
+  limit: intQueryParam(1, 100000).optional(),
+  format: z.enum(['raw', 'formatted']).optional(),
+});
+
+export type SseEventsQuery = z.infer<typeof SseEventsQuerySchema>;
+export type FileTreeQuery = z.infer<typeof FileTreeQuerySchema>;
+export type FileContentQuery = z.infer<typeof FileContentQuerySchema>;
+export type FileRawQuery = z.infer<typeof FileRawQuerySchema>;
+export type FileTailQuery = z.infer<typeof FileTailQuerySchema>;
+export type TerminalQuery = z.infer<typeof TerminalQuerySchema>;
+export type DeleteSessionQuery = z.infer<typeof DeleteSessionQuerySchema>;
+export type LifecycleQuery = z.infer<typeof LifecycleQuerySchema>;
+export type SubagentsQuery = z.infer<typeof SubagentsQuerySchema>;
+export type TranscriptQuery = z.infer<typeof TranscriptQuerySchema>;
+
 // ========== Orchestrator Loop ==========
 
 /** POST /api/orchestrator/start */

@@ -9,18 +9,19 @@ import { realpathSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import { ApiErrorCode, createErrorResponse, getErrorMessage } from '../../types.js';
 import { fileStreamManager } from '../../file-stream-manager.js';
-import { findSessionOrFail } from '../route-helpers.js';
+import { findSessionOrFail, parseQuery } from '../route-helpers.js';
+import { FileTreeQuerySchema, FileContentQuerySchema, FileRawQuerySchema, FileTailQuerySchema } from '../schemas.js';
 import type { SessionPort } from '../ports/index.js';
 
 export function registerFileRoutes(app: FastifyInstance, ctx: SessionPort): void {
   // File tree listing
   app.get('/api/sessions/:id/files', async (req) => {
     const { id } = req.params as { id: string };
-    const { depth, showHidden } = req.query as { depth?: string; showHidden?: string };
+    const query = parseQuery(FileTreeQuerySchema, req.query);
     const session = findSessionOrFail(ctx, id);
 
-    const maxDepth = Math.min(parseInt(depth || '5', 10), 10);
-    const includeHidden = showHidden === 'true';
+    const maxDepth = query.depth ?? 5;
+    const includeHidden = query.showHidden === 'true';
     const workingDir = session.workingDir;
 
     // Default excludes - large/generated directories
@@ -140,12 +141,9 @@ export function registerFileRoutes(app: FastifyInstance, ctx: SessionPort): void
   // Get file content for preview (File Browser)
   app.get('/api/sessions/:id/file-content', async (req) => {
     const { id } = req.params as { id: string };
-    const { path: filePath, lines, raw } = req.query as { path?: string; lines?: string; raw?: string };
+    const query = parseQuery(FileContentQuerySchema, req.query);
+    const filePath = query.path;
     const session = findSessionOrFail(ctx, id);
-
-    if (!filePath) {
-      return createErrorResponse(ApiErrorCode.INVALID_INPUT, 'Missing path parameter');
-    }
 
     // Validate path is within working directory (security: resolve symlinks to prevent traversal)
     const fullPath = resolve(session.workingDir, filePath);
@@ -196,7 +194,7 @@ export function registerFileRoutes(app: FastifyInstance, ctx: SessionPort): void
       const imageExts = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico']);
       const videoExts = new Set(['mp4', 'webm', 'mov', 'avi']);
 
-      if (raw === 'true' || binaryExts.has(ext)) {
+      if (query.raw === 'true' || binaryExts.has(ext)) {
         // Return metadata for binary files
         return {
           success: true,
@@ -221,7 +219,7 @@ export function registerFileRoutes(app: FastifyInstance, ctx: SessionPort): void
 
       // Read text file with line limit (bounded to prevent DoS)
       const MAX_LINES_LIMIT = 10000;
-      const maxLines = Math.min(parseInt(lines || '500', 10) || 500, MAX_LINES_LIMIT);
+      const maxLines = Math.min(query.lines ?? 500, MAX_LINES_LIMIT);
       const content = await fs.readFile(resolvedPath, 'utf-8');
       const allLines = content.split('\n');
       const truncatedContent = allLines.length > maxLines;
@@ -246,13 +244,9 @@ export function registerFileRoutes(app: FastifyInstance, ctx: SessionPort): void
   // Serve raw file content (for images/binary files)
   app.get('/api/sessions/:id/file-raw', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const { path: filePath } = req.query as { path?: string };
+    const query = parseQuery(FileRawQuerySchema, req.query);
+    const filePath = query.path;
     const session = findSessionOrFail(ctx, id);
-
-    if (!filePath) {
-      reply.code(400).send(createErrorResponse(ApiErrorCode.INVALID_INPUT, 'Missing path parameter'));
-      return;
-    }
 
     // Validate path is within working directory (security: resolve symlinks to prevent traversal)
     const fullPath = resolve(session.workingDir, filePath);
@@ -318,13 +312,9 @@ export function registerFileRoutes(app: FastifyInstance, ctx: SessionPort): void
   // Stream file content via tail -f (SSE endpoint)
   app.get('/api/sessions/:id/tail-file', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const { path: filePath, lines } = req.query as { path?: string; lines?: string };
+    const query = parseQuery(FileTailQuerySchema, req.query);
+    const filePath = query.path;
     const session = findSessionOrFail(ctx, id);
-
-    if (!filePath) {
-      reply.code(400).send(createErrorResponse(ApiErrorCode.INVALID_INPUT, 'Missing path parameter'));
-      return;
-    }
 
     // Set up SSE headers
     reply.raw.writeHead(200, {
@@ -342,7 +332,7 @@ export function registerFileRoutes(app: FastifyInstance, ctx: SessionPort): void
       sessionId: id,
       filePath,
       workingDir: session.workingDir,
-      lines: lines ? parseInt(lines, 10) : undefined,
+      lines: query.lines,
       onData: (data) => {
         // Send data as SSE event
         reply.raw.write(`data: ${JSON.stringify({ type: 'data', content: data })}\n\n`);

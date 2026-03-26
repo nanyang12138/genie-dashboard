@@ -6,6 +6,7 @@
  */
 
 import { join, resolve, relative, isAbsolute } from 'node:path';
+import { realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import type { z } from 'zod';
 import { Session } from '../session.js';
@@ -21,16 +22,28 @@ export const SETTINGS_PATH = join(homedir(), '.codeman', 'settings.json');
 
 /**
  * Validates that a path component doesn't escape the base directory.
- * Returns the resolved full path, or null if the path is a traversal attempt.
+ * Uses realpathSync() to resolve symlinks, preventing symlink-based traversal.
+ * Returns the resolved full path, or null if the path is a traversal attempt or doesn't exist.
  */
 export function validatePathWithinBase(name: string, baseDir: string): string | null {
   const fullPath = resolve(join(baseDir, name));
-  const resolvedBase = resolve(baseDir);
-  const relPath = relative(resolvedBase, fullPath);
+  let resolvedPath: string;
+  let resolvedBase: string;
+  try {
+    resolvedPath = realpathSync(fullPath);
+    resolvedBase = realpathSync(baseDir);
+  } catch {
+    // If the path doesn't exist yet (e.g. creating a new file), fall back to
+    // string-based validation. This is safe because the path can't be a symlink
+    // if it doesn't exist.
+    resolvedBase = resolve(baseDir);
+    resolvedPath = fullPath;
+  }
+  const relPath = relative(resolvedBase, resolvedPath);
   if (relPath.startsWith('..') || isAbsolute(relPath)) {
     return null;
   }
-  return fullPath;
+  return resolvedPath;
 }
 
 // Maximum hook data size (prevents oversized SSE broadcasts)
@@ -49,6 +62,22 @@ export function findSessionOrFail(ctx: SessionPort, sessionId: string): Session 
     });
   }
   return session;
+}
+
+/**
+ * Parse and validate query parameters against a Zod schema, or throw a structured 400 error.
+ * Replaces the pattern: `const q = req.query as { ... }` which skips validation entirely.
+ */
+export function parseQuery<T>(schema: z.ZodType<T>, query: unknown, errorMessage?: string): T {
+  const result = schema.safeParse(query);
+  if (!result.success) {
+    const msg = errorMessage ?? `Invalid query parameter: ${result.error.issues[0]?.message ?? 'Validation failed'}`;
+    throw Object.assign(new Error(msg), {
+      statusCode: 400,
+      body: createErrorResponse(ApiErrorCode.INVALID_INPUT, msg),
+    });
+  }
+  return result.data;
 }
 
 /**

@@ -19,11 +19,14 @@ import {
   SubagentWindowStatesSchema,
   SubagentParentMapSchema,
   RevokeSessionSchema,
+  LifecycleQuerySchema,
+  SubagentsQuerySchema,
+  TranscriptQuerySchema,
 } from '../schemas.js';
 import { subagentWatcher } from '../../subagent-watcher.js';
 import { imageWatcher } from '../../image-watcher.js';
 import { getLifecycleLog } from '../../session-lifecycle-log.js';
-import { findSessionOrFail, formatUptime, parseBody, SETTINGS_PATH } from '../route-helpers.js';
+import { findSessionOrFail, formatUptime, parseBody, parseQuery, SETTINGS_PATH } from '../route-helpers.js';
 import { SseEvent } from '../sse-events.js';
 import type { SessionPort, EventPort, ConfigPort, InfraPort, AuthPort } from '../ports/index.js';
 
@@ -141,18 +144,13 @@ export function registerSystemRoutes(
   });
 
   app.get('/api/session-lifecycle', async (req) => {
-    const query = req.query as {
-      sessionId?: string;
-      event?: string;
-      since?: string;
-      limit?: string;
-    };
+    const query = parseQuery(LifecycleQuerySchema, req.query);
     const lifecycleLog = getLifecycleLog();
     const entries = await lifecycleLog.query({
       sessionId: query.sessionId,
-      event: query.event as import('../../types.js').LifecycleEventType,
-      since: query.since ? Number(query.since) : undefined,
-      limit: query.limit ? Math.min(Number(query.limit), 1000) : 200,
+      event: query.event,
+      since: query.since,
+      limit: query.limit ?? 200,
     });
     return { success: true, entries };
   });
@@ -464,9 +462,9 @@ export function registerSystemRoutes(
   // ========== Subagent Monitoring ==========
 
   app.get('/api/subagents', async (req) => {
-    const { minutes } = req.query as { minutes?: string };
-    const subagents = minutes
-      ? subagentWatcher.getRecentSubagents(parseInt(minutes, 10))
+    const query = parseQuery(SubagentsQuerySchema, req.query);
+    const subagents = query.minutes
+      ? subagentWatcher.getRecentSubagents(query.minutes)
       : subagentWatcher.getSubagents();
     return { success: true, data: subagents };
   });
@@ -489,11 +487,10 @@ export function registerSystemRoutes(
 
   app.get('/api/subagents/:agentId/transcript', async (req) => {
     const { agentId } = req.params as { agentId: string };
-    const { limit, format } = req.query as { limit?: string; format?: 'raw' | 'formatted' };
-    const limitNum = limit ? parseInt(limit, 10) : undefined;
-    const transcript = await subagentWatcher.getTranscript(agentId, limitNum);
+    const query = parseQuery(TranscriptQuerySchema, req.query);
+    const transcript = await subagentWatcher.getTranscript(agentId, query.limit);
 
-    if (format === 'formatted') {
+    if (query.format === 'formatted') {
       const formatted = subagentWatcher.formatTranscript(transcript);
       return { success: true, data: { formatted, entryCount: transcript.length } };
     }

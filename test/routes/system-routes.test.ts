@@ -612,30 +612,31 @@ describe('system-routes', () => {
 
       await harness.app.inject({
         method: 'GET',
-        url: '/api/session-lifecycle?sessionId=s1&event=session_created&since=1000&limit=50',
+        url: '/api/session-lifecycle?sessionId=s1&event=created&since=1000&limit=50',
       });
 
       expect(queryFn).toHaveBeenCalledWith({
         sessionId: 's1',
-        event: 'session_created',
+        event: 'created',
         since: 1000,
         limit: 50,
       });
     });
 
-    it('caps limit at 1000', async () => {
+    it('rejects limit exceeding 1000', async () => {
       const queryFn = vi.fn(async () => []);
       mockedGetLifecycleLog.mockReturnValue({
         log: vi.fn(),
         query: queryFn,
       } as never);
 
-      await harness.app.inject({
+      const res = await harness.app.inject({
         method: 'GET',
         url: '/api/session-lifecycle?limit=5000',
       });
 
-      expect(queryFn).toHaveBeenCalledWith(expect.objectContaining({ limit: 1000 }));
+      expect(res.statusCode).toBe(400);
+      expect(queryFn).not.toHaveBeenCalled();
     });
 
     it('defaults limit to 200 when not specified', async () => {
