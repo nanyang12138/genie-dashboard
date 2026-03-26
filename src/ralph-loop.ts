@@ -5,7 +5,7 @@
  * - Polling for available tasks from the task queue
  * - Assigning tasks to idle sessions
  * - Monitoring completion and handling failures
- * - Auto-generating follow-up tasks when min duration not reached
+ * - Optionally generating follow-up tasks when min duration not reached
  *
  * Key exports:
  * - `RalphLoop` class — the loop engine, extends EventEmitter
@@ -381,6 +381,11 @@ export class RalphLoop extends EventEmitter {
       return;
     }
 
+    // Guard: task may already be completed/failed from another event path (e.g. timeout)
+    if (task.isDone()) {
+      return;
+    }
+
     // Append output and check for completion
     task.appendOutput(session.getOutput());
 
@@ -416,16 +421,22 @@ export class RalphLoop extends EventEmitter {
 
   private handleSessionStopped(sessionId: string): void {
     const task = this.taskQueue.getRunningTaskForSession(sessionId);
-    if (task) {
+    if (task && !task.isDone()) {
       task.fail('Session stopped unexpectedly');
       this.taskQueue.updateTask(task);
       this.emit('taskFailed', task.id, 'Session stopped unexpectedly');
+    }
+
+    // Clear stale task reference from the session (if it still exists)
+    const session = this.sessionManager.getSession(sessionId);
+    if (session?.currentTaskId) {
+      session.clearTask();
     }
   }
 
   private handleSessionTaskError(_sessionId: string, taskId: string, error: string): void {
     const task = this.taskQueue.getTask(taskId);
-    if (!task) {
+    if (!task || task.isDone()) {
       return;
     }
 
@@ -444,12 +455,7 @@ export class RalphLoop extends EventEmitter {
   }
 
   private async generateFollowUpTasks(): Promise<void> {
-    // This is a placeholder for auto-generating follow-up tasks
-    // In a real implementation, this could:
-    // - Analyze completed tasks to find optimization opportunities
-    // - Generate tasks for code cleanup, tests, documentation
-    // - Use Claude to suggest improvements
-
+    // Simple round-robin task generation to keep sessions busy until min duration
     const suggestions = [
       'Review and optimize recently changed code',
       'Add tests for uncovered code paths',

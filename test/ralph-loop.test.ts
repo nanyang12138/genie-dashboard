@@ -296,11 +296,7 @@ describe('RalphLoop', () => {
   describe('getStats', () => {
     it('should return complete stats object', async () => {
       const mockRunningTask = { id: '2', status: 'running', isTimedOut: () => false };
-      mockState.taskQueue.tasks = [
-        { id: '1', status: 'pending' },
-        mockRunningTask,
-        { id: '3', status: 'completed' },
-      ];
+      mockState.taskQueue.tasks = [{ id: '1', status: 'pending' }, mockRunningTask, { id: '3', status: 'completed' }];
       mockState.taskQueue.getRunningTasks.mockReturnValue([mockRunningTask]);
 
       await loop.start();
@@ -373,6 +369,64 @@ describe('RalphLoop', () => {
 
       expect(loop.status).toBe('running');
     });
+  });
+});
+
+describe('Event handler guards', () => {
+  let guardLoop: RalphLoop;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    guardLoop = new RalphLoop({ pollIntervalMs: 100 });
+  });
+
+  afterEach(() => {
+    guardLoop.destroy();
+    vi.useRealTimers();
+  });
+
+  it('should not double-complete an already-completed task', async () => {
+    const mockTask = {
+      id: 'task-1',
+      status: 'completed',
+      isDone: () => true,
+      checkCompletion: vi.fn(() => true),
+      appendOutput: vi.fn(),
+      complete: vi.fn(),
+    };
+    const mockSession = {
+      id: 'session-1',
+      currentTaskId: 'task-1',
+      getOutput: vi.fn(() => '<promise>COMPLETE</promise>'),
+      clearTask: vi.fn(),
+    };
+
+    mockState.sessionManager.sessions.set('session-1', mockSession);
+    mockState.taskQueue.getTask.mockReturnValue(mockTask);
+
+    await guardLoop.start();
+    // Simulate sessionCompletion event for an already-completed task
+    mockState.sessionManager.emit('sessionCompletion', 'session-1', 'COMPLETE');
+
+    // task.complete() should NOT be called because task.isDone() is true
+    expect(mockTask.complete).not.toHaveBeenCalled();
+  });
+
+  it('should not double-fail an already-failed task on session stop', async () => {
+    const mockTask = {
+      id: 'task-1',
+      status: 'failed',
+      isDone: () => true,
+      fail: vi.fn(),
+    };
+
+    mockState.taskQueue.getRunningTaskForSession.mockReturnValue(mockTask);
+
+    await guardLoop.start();
+    mockState.sessionManager.emit('sessionStopped', 'session-1');
+
+    expect(mockTask.fail).not.toHaveBeenCalled();
   });
 });
 
