@@ -16,7 +16,7 @@ Object.assign(CodemanApp.prototype, {
     if (this.ralphClosedSessions.has(data.sessionId)) return;
     this.updateRalphState(data.sessionId, {
       loop: data.state,
-      ...(data.state?.active ? { completionDetectedPhrase: null, exitGateMet: false } : {})
+      ...(data.state?.active ? { completionDetectedPhrase: null, exitGateMet: false, statusBlock: null } : {})
     });
   },
 
@@ -42,11 +42,12 @@ Object.assign(CodemanApp.prototype, {
     setTimeout(() => this._shownCompletions?.delete(completionKey), 30000);
 
     // Update ralph state to mark loop as inactive
-    const existing = this.ralphStates.get(data.sessionId) || {};
-    if (existing.loop) {
-      existing.loop.active = false;
-      existing.completionDetectedPhrase = data.phrase || 'unknown';
-      this.updateRalphState(data.sessionId, existing);
+    const existing = this.ralphStates.get(data.sessionId);
+    if (existing?.loop) {
+      this.updateRalphState(data.sessionId, {
+        loop: { ...existing.loop, active: false },
+        completionDetectedPhrase: data.phrase || 'unknown',
+      });
     }
 
     const session = this.sessions.get(data.sessionId);
