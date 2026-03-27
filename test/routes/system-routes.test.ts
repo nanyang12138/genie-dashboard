@@ -166,9 +166,8 @@ describe('system-routes', () => {
         url: '/api/config',
         payload: { unknownField: 'invalid' },
       });
-      expect(res.statusCode).toBe(200);
-      const body = JSON.parse(res.body);
-      expect(body.success).toBe(false);
+      expect(res.statusCode).toBe(400);
+      expect(JSON.parse(res.body).error).toBeDefined();
     });
   });
 
@@ -361,9 +360,8 @@ describe('system-routes', () => {
         url: '/api/settings',
         payload: { unknownField: 'bad' },
       });
-      expect(res.statusCode).toBe(200);
-      const body = JSON.parse(res.body);
-      expect(body.success).toBe(false);
+      expect(res.statusCode).toBe(400);
+      expect(JSON.parse(res.body).error).toBeDefined();
     });
 
     it('rejects non-object body', async () => {
@@ -429,9 +427,8 @@ describe('system-routes', () => {
         url: '/api/subagent-window-states',
         payload: { minimized: { 'agent-1': 'not-a-boolean' } },
       });
-      expect(res.statusCode).toBe(200);
-      const body = JSON.parse(res.body);
-      expect(body.success).toBe(false);
+      expect(res.statusCode).toBe(400);
+      expect(JSON.parse(res.body).error).toBeDefined();
     });
   });
 
@@ -486,9 +483,8 @@ describe('system-routes', () => {
         url: '/api/subagent-parents',
         payload: { 'agent-1': 123 },
       });
-      expect(res.statusCode).toBe(200);
-      const body = JSON.parse(res.body);
-      expect(body.success).toBe(false);
+      expect(res.statusCode).toBe(400);
+      expect(JSON.parse(res.body).error).toBeDefined();
     });
   });
 
@@ -910,5 +906,4 @@ describe('system-routes', () => {
       expect(body.data).toHaveLength(1);
     });
   });
-
 });
