@@ -103,9 +103,8 @@ describe('orchestrator-routes', () => {
         url: '/api/orchestrator/start',
         payload: { goal: '' },
       });
-      expect(res.statusCode).toBe(200);
-      const body = JSON.parse(res.body);
-      expect(body.success).toBe(false);
+      expect(res.statusCode).toBe(400);
+      expect(JSON.parse(res.body).error).toBeDefined();
     });
 
     it('rejects missing goal', async () => {
@@ -114,9 +113,8 @@ describe('orchestrator-routes', () => {
         url: '/api/orchestrator/start',
         payload: {},
       });
-      expect(res.statusCode).toBe(200);
-      const body = JSON.parse(res.body);
-      expect(body.success).toBe(false);
+      expect(res.statusCode).toBe(400);
+      expect(JSON.parse(res.body).error).toBeDefined();
     });
 
     it('initializes loop and starts when valid', async () => {
@@ -228,9 +226,8 @@ describe('orchestrator-routes', () => {
         url: '/api/orchestrator/reject',
         payload: {},
       });
-      expect(res.statusCode).toBe(200);
-      const body = JSON.parse(res.body);
-      expect(body.success).toBe(false);
+      expect(res.statusCode).toBe(400);
+      expect(JSON.parse(res.body).error).toBeDefined();
     });
 
     it('calls reject with feedback', async () => {

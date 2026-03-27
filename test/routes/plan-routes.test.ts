@@ -80,9 +80,8 @@ describe('plan-routes', () => {
         url: '/api/cancel-plan-generation',
         payload: { orchestratorId: 12345 }, // should be string
       });
-      expect(res.statusCode).toBe(200);
-      const body = JSON.parse(res.body);
-      expect(body.success).toBe(false);
+      expect(res.statusCode).toBe(400);
+      expect(JSON.parse(res.body).error).toBeDefined();
     });
   });
 
@@ -129,7 +128,7 @@ describe('plan-routes', () => {
       expect(body.data.status).toBe('completed');
       expect(harness.ctx.broadcast).toHaveBeenCalledWith(
         'session:planTaskUpdate',
-        expect.objectContaining({ sessionId: harness.ctx._sessionId, taskId: 'task-1' }),
+        expect.objectContaining({ sessionId: harness.ctx._sessionId, taskId: 'task-1' })
       );
     });
 
@@ -159,9 +158,8 @@ describe('plan-routes', () => {
         url: `/api/sessions/${harness.ctx._sessionId}/plan/task/task-1`,
         payload: { status: 'invalid_status' },
       });
-      expect(res.statusCode).toBe(200);
-      const body = JSON.parse(res.body);
-      expect(body.success).toBe(false);
+      expect(res.statusCode).toBe(400);
+      expect(JSON.parse(res.body).error).toBeDefined();
     });
   });
 
@@ -208,7 +206,7 @@ describe('plan-routes', () => {
       expect(body.data.completedCount).toBe(5);
       expect(harness.ctx.broadcast).toHaveBeenCalledWith(
         'session:planCheckpoint',
-        expect.objectContaining({ sessionId: harness.ctx._sessionId }),
+        expect.objectContaining({ sessionId: harness.ctx._sessionId })
       );
     });
   });
@@ -279,9 +277,7 @@ describe('plan-routes', () => {
     });
 
     it('rolls back to a previous version', async () => {
-      const mockPlan = [
-        { id: 'task-1', content: 'Step 1', status: 'pending' },
-      ];
+      const mockPlan = [{ id: 'task-1', content: 'Step 1', status: 'pending' }];
       harness.ctx._session.ralphTracker = {
         rollbackToVersion: vi.fn(() => ({ success: true, plan: mockPlan })),
       } as never;
@@ -296,7 +292,7 @@ describe('plan-routes', () => {
       expect(body.data).toHaveLength(1);
       expect(harness.ctx.broadcast).toHaveBeenCalledWith(
         'session:planRollback',
-        expect.objectContaining({ sessionId: harness.ctx._sessionId, version: 1 }),
+        expect.objectContaining({ sessionId: harness.ctx._sessionId, version: 1 })
       );
     });
 
@@ -358,7 +354,7 @@ describe('plan-routes', () => {
       expect(body.data.content).toBe('New task');
       expect(harness.ctx.broadcast).toHaveBeenCalledWith(
         'session:planTaskAdded',
-        expect.objectContaining({ sessionId: harness.ctx._sessionId }),
+        expect.objectContaining({ sessionId: harness.ctx._sessionId })
       );
     });
 
@@ -372,9 +368,8 @@ describe('plan-routes', () => {
         url: `/api/sessions/${harness.ctx._sessionId}/plan/task`,
         payload: { priority: 'P1' },
       });
-      expect(res.statusCode).toBe(200);
-      const body = JSON.parse(res.body);
-      expect(body.success).toBe(false);
+      expect(res.statusCode).toBe(400);
+      expect(JSON.parse(res.body).error).toBeDefined();
     });
 
     it('accepts optional fields', async () => {
